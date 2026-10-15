@@ -6,26 +6,37 @@ export async function openSettings() {
   const body = m.el.querySelector("#st-body");
 
   const render = (data) => {
-    const configurable = data.providers.filter((p) => !p.builtIn);
-    const builtIn = data.providers.filter((p) => p.builtIn);
+    const markets = (p) => p.markets.map((k) => esc(data.markets[k].split(" (")[0])).join(", ");
+    const optionalOnly = (p) => p.fields.length && p.fields.every((f) => f.optional);
+    const status = (p) => p.builtIn ? `<span class="pill ok">Always on</span>`
+      : optionalOnly(p) ? `<span class="pill ok">Ready · key optional</span>`
+      : p.configured ? `<span class="pill ok">Connected</span>` : `<span class="pill">Not set</span>`;
+    const card = (p) => p.builtIn
+      ? `<div class="prov on"><div class="prov-head"><b>${esc(p.name)}</b>${status(p)}${p.live ? `<span class="pill live">Live</span>` : ""}</div>
+          <div class="muted small">${esc(p.note)}</div><div class="small">Markets: ${markets(p)}</div></div>`
+      : `<form class="prov ${p.configured ? "on" : ""}" data-id="${p.id}">
+          <div class="prov-head"><b>${esc(p.name)}</b>${status(p)}</div>
+          <div class="muted small">${esc(p.note)}</div>
+          <div class="small">Markets: ${markets(p)}</div>
+          ${p.fields.map((f) => `<label class="field"><span>${esc(f.label)}</span>
+            <input name="${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : ""} placeholder="${esc(f.placeholder || "")}" value="${esc(f.value)}" /></label>`).join("")}
+          <div class="row-end"><span class="test-result small"></span>
+            ${p.configured ? `${optionalOnly(p) ? "" : `<button type="button" data-act="remove" class="danger">Remove</button>`}<button type="button" data-act="test">Test</button>` : ""}
+            <button type="submit" class="primary">Save</button></div>
+        </form>`;
+    const isBroker = (p) => !p.builtIn && !optionalOnly(p) && p.markets.length === 1 && p.markets[0] === "india";
+    const groups = [
+      ["Free — no key needed", data.providers.filter((p) => p.builtIn || optionalOnly(p))],
+      ["Indian brokers (your own account)", data.providers.filter(isBroker)],
+      ["Global data APIs (your own key)", data.providers.filter((p) => !p.builtIn && !optionalOnly(p) && !isBroker(p))],
+    ];
+    const connected = data.providers.filter((p) => !p.builtIn && !optionalOnly(p) && p.configured).length;
     body.className = "";
     body.innerHTML = `
-      <p class="muted">Free sources work out of the box. Add your own keys to use a provider. Keys are saved only on this computer
-      (<code>market-app/data/config.json</code>) and never sent anywhere except to that provider.</p>
-      <h4>Built-in (free, no key)</h4>
-      <div class="prov-grid">${builtIn.map((p) => `<div class="prov on"><div class="prov-head"><b>${esc(p.name)}</b><span class="pill ok">Always on</span>${p.live ? `<span class="pill live">Live</span>` : ""}</div>
-        <div class="muted small">${esc(p.note)}</div><div class="small">Markets: ${p.markets.map((k) => esc(data.markets[k].split(" (")[0])).join(", ")}</div></div>`).join("")}</div>
-      <h4>Your API keys</h4>
-      <div class="prov-grid">${configurable.map((p) => `<form class="prov ${p.configured ? "on" : ""}" data-id="${p.id}">
-        <div class="prov-head"><b>${esc(p.name)}</b>${p.configured ? `<span class="pill ok">Connected</span>` : `<span class="pill">Not set</span>`}</div>
-        <div class="muted small">${esc(p.note)}</div>
-        <div class="small">Markets: ${p.markets.map((k) => esc(data.markets[k].split(" (")[0])).join(", ")}</div>
-        ${p.fields.map((f) => `<label class="field"><span>${esc(f.label)}</span>
-          <input name="${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : ""} placeholder="${esc(f.placeholder || "")}" value="${esc(f.value)}" /></label>`).join("")}
-        <div class="row-end"><span class="test-result small"></span>
-          ${p.configured ? `<button type="button" data-act="remove" class="danger">Remove</button><button type="button" data-act="test">Test</button>` : ""}
-          <button type="submit" class="primary">Save</button></div>
-      </form>`).join("")}</div>
+      <p class="muted">${data.providers.length} data sources. Free ones work out of the box; add your own keys to use the others
+      (${connected} connected). Keys are saved only on this computer (<code>market-app/data/config.json</code>) and are only ever sent to that provider.</p>
+      <input class="wide-input" id="st-filter" placeholder="Filter providers… (e.g. India, crypto, Alpaca)" autocomplete="off" />
+      ${groups.map(([title, list]) => `<h4>${esc(title)} · ${list.length}</h4><div class="prov-grid">${list.map(card).join("")}</div>`).join("")}
       <h4>Which source to use for each market</h4>
       <table class="tbl route"><tr><th>Market</th><th>Source</th></tr>
       ${Object.entries(data.markets).map(([mk, label]) => {
@@ -65,6 +76,11 @@ export async function openSettings() {
         }
       };
     });
+    const filter = body.querySelector("#st-filter");
+    filter.oninput = () => {
+      const q = filter.value.toLowerCase();
+      body.querySelectorAll(".prov").forEach((el) => (el.hidden = !!q && !el.textContent.toLowerCase().includes(q)));
+    };
     body.querySelectorAll("select[data-market]").forEach((sel) => {
       sel.onchange = async () => {
         render(await api("/api/routing", { body: { [sel.dataset.market]: sel.value } }));

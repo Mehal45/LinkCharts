@@ -31,27 +31,33 @@ const isConfigured = (id) => {
   const p = PROVIDERS[id];
   if (p.builtIn) return true;
   const c = config.providers[id];
-  return !!c && p.fields.every((f) => c[f.key]);
+  return p.fields.every((f) => f.optional || c?.[f.key]);
 };
 const mask = (v) => (v ? `••••${String(v).slice(-4)}` : "");
 
 /** Default source order per market when routing is "auto". */
+// Free sources other than Yahoo/Binance (Upstox, Coinbase, Kraken, CoinGecko) are opt-in via
+// the per-market table, so the automatic order only reaches for them as a fallback.
 const AUTO_ORDER = {
-  india: ["fyers", "twelvedata", "yahoo"],
-  us: ["twelvedata", "polygon", "yahoo"],
-  global: ["twelvedata", "yahoo"],
-  crypto: ["binance", "twelvedata", "polygon", "yahoo"],
-  forex: ["twelvedata", "polygon", "yahoo"],
+  india: ["kite", "fyers", "eodhd", "twelvedata", "yahoo", "upstox"],
+  us: ["alpaca", "polygon", "tiingo", "twelvedata", "fmp", "eodhd", "tradier", "marketstack", "alphavantage", "yahoo"],
+  global: ["eodhd", "twelvedata", "fmp", "marketstack", "alphavantage", "yahoo"],
+  crypto: ["binance", "coinbase", "alpaca", "tiingo", "twelvedata", "polygon", "kraken", "yahoo", "coingecko"],
+  forex: ["twelvedata", "polygon", "tiingo", "fmp", "eodhd", "alphavantage", "yahoo"],
   futures: ["yahoo"],
 };
+// A key-less provider (like CoinGecko without its optional key) only joins "auto" when the user saved settings for it.
+const keyOptional = (id) => PROVIDERS[id].fields?.length && PROVIDERS[id].fields.every((f) => f.optional);
 
 function candidateSources(symbol, interval) {
   const market = marketOf(symbol);
   const chosen = config.routing[market];
-  const order = chosen && chosen !== "auto" ? [chosen, "yahoo"] : AUTO_ORDER[market];
+  const explicit = chosen && chosen !== "auto";
+  const order = explicit ? [chosen, "yahoo"] : AUTO_ORDER[market];
   return [...new Set(order)].filter((id) => {
     const p = PROVIDERS[id];
-    return p && isConfigured(id) && p.markets.includes(market) && (!p.supports || p.supports(symbol, interval));
+    if (!p || !isConfigured(id) || !p.markets.includes(market) || (p.supports && !p.supports(symbol, interval))) return false;
+    return explicit || !keyOptional(id) || !!config.providers[id];
   });
 }
 

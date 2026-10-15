@@ -4,6 +4,8 @@
 // Canonical symbols: RELIANCE.NS / .BO (India), AAPL (US), VOD.L (other exchanges), ^GSPC (index),
 // BTC-USD (crypto), EURUSD=X (forex), GC=F (futures).
 
+import { EXTRA_PROVIDERS } from "./providers-extra.mjs";
+
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0 Safari/537.36";
 
 export const INTERVALS = ["1m", "5m", "15m", "30m", "60m", "1d", "1wk", "1mo"];
@@ -27,13 +29,32 @@ class ProviderError extends Error {
   constructor(message, status = 502) { super(message); this.status = status; }
 }
 
-async function getJson(url, opts = {}) {
+/** Pulls a human-readable message out of the many error shapes providers use. */
+function errorMessage(body) {
+  if (!body || typeof body !== "object") return null;
+  const e = body.error;
+  return (typeof e === "string" ? e : e?.message || e?.description)
+    || body.message || body.detail || body["Error Message"] || body.Note || body.Information
+    || body.chart?.error?.description || body.errors?.[0]?.message || null;
+}
+
+export async function getJson(url, opts = {}) {
   const res = await fetch(url, { ...opts, headers: { "User-Agent": UA, Accept: "application/json", ...opts.headers } });
   const text = await res.text();
   let body;
-  try { body = JSON.parse(text); } catch { throw new ProviderError(`Unexpected response (${res.status})`); }
-  if (!res.ok) throw new ProviderError(body?.message || body?.error || body?.chart?.error?.description || `HTTP ${res.status}`, res.status);
+  try { body = JSON.parse(text); } catch {
+    // Some APIs answer errors in plain text or HTML ("Unauthenticated", nginx 401 pages).
+    const plain = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140);
+    throw new ProviderError(res.ok ? `Unexpected response: ${plain}` : `HTTP ${res.status}${plain ? ": " + plain : ""}`, res.status || 502);
+  }
+  if (!res.ok) throw new ProviderError(errorMessage(body) || `HTTP ${res.status}`, res.status);
   return body;
+}
+
+export async function getText(url, opts = {}) {
+  const res = await fetch(url, { ...opts, headers: { "User-Agent": UA, ...opts.headers } });
+  if (!res.ok) throw new ProviderError(`HTTP ${res.status}`, res.status);
+  return res;
 }
 
 // ---------------- Yahoo (free, global, no key) ----------------
@@ -197,6 +218,12 @@ export const polygon = {
   },
 };
 
-export const PROVIDERS = { yahoo, binance, fyers, twelvedata, polygon };
+// Order here is the order shown in Settings: free built-ins first, then Indian brokers, then global APIs.
+export const PROVIDERS = {
+  yahoo, binance, ...pick(EXTRA_PROVIDERS, "coinbase", "kraken", "upstox", "coingecko"),
+  fyers, ...pick(EXTRA_PROVIDERS, "kite"),
+  twelvedata, polygon, ...pick(EXTRA_PROVIDERS, "alpaca", "tiingo", "fmp", "eodhd", "marketstack", "alphavantage", "tradier"),
+};
+function pick(obj, ...keys) { return Object.fromEntries(keys.map((k) => [k, obj[k]])); }
 export const barSeconds = (interval) => SECONDS[interval];
 export { ProviderError };

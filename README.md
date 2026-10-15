@@ -27,17 +27,46 @@ The server only listens on your own computer (127.0.0.1), because it can store y
 
 ## Data sources
 
-| Source | Key needed | Covers | Notes |
-|---|---|---|---|
-| Yahoo Finance | No | India, US, world stocks and indices, forex, futures, crypto | Unofficial; usually delayed |
-| Binance | No | Crypto | **Real-time** over WebSocket. USD pairs map to USDT |
-| Fyers API v3 | App ID + daily access token | India | Your own Fyers app (myapi.fyers.in) |
-| Twelve Data | API key | US, world, forex, crypto (India on paid plans) | Free: 800 requests/day |
-| Polygon.io | API key | US, crypto, forex | Free: 5 requests/min, delayed |
+17 sources: 6 work with no key, and 11 use your own account or API key. Add keys in **⚙ → Data sources & API keys**. Each provider has its own fields (some need two values, such as an app ID and token), and a **Test** button checks the key.
 
-- **Adding keys:** open **⚙ → Data sources & API keys**. Each provider has its own fields, because keys from different providers look alike and some need two values, so one auto-detecting box wouldn't be reliable. Click **Test** after saving.
-- **Choosing a source:** the same screen has a per-market table. If a source fails, the app falls back to Yahoo, and the ⚠ on the source badge explains why.
-- **Fyers, Twelve Data and Polygon** have only been checked with invalid keys so far (each returned its proper error). They haven't been tested with real accounts.
+### Free (no key)
+
+| Source | Covers | Notes |
+|---|---|---|
+| Yahoo Finance | India, US, world stocks & indices, forex, futures, crypto | Default for most markets; unofficial and usually delayed |
+| Binance | Crypto | **Real-time** over WebSocket (USD pairs map to USDT) |
+| Coinbase Exchange | Crypto (USD/EUR/GBP) | Public candles |
+| Kraken | Crypto | Public candles, ~720 bars per interval |
+| Upstox (public history) | India (NSE/BSE stocks, NIFTY/SENSEX indices) | Broker-grade candles, including today's intraday, with no login |
+| CoinGecko | Thousands of coins | Works keyless; an optional free Demo key raises the limit. Intraday wicks are approximate |
+
+### Indian brokers (your account)
+
+| Source | You enter | Notes |
+|---|---|---|
+| Fyers API v3 | App ID + access token | Token expires daily |
+| Zerodha Kite Connect | API key + access token | Needs the historical-data add-on; token expires daily |
+
+### Global data APIs (your key)
+
+| Source | Covers | Free plan |
+|---|---|---|
+| Twelve Data | US, world, forex, crypto (India on paid plans) | 800 requests/day |
+| Polygon.io (Massive) | US, crypto, forex | 5 requests/min, delayed |
+| Alpaca | US stocks (IEX feed), crypto | Free account, paper keys work |
+| Tiingo | US stocks (decades of EOD), IEX intraday, crypto, forex | Free key |
+| Financial Modeling Prep | US free; world, India, forex, crypto on paid plans | 250 requests/day |
+| EODHD | 70+ exchanges incl. NSE/BSE, indices, forex, crypto | 20 requests/day, 1 year EOD |
+| Marketstack | 70+ exchanges incl. NSE | 100 requests/month, EOD only |
+| Alpha Vantage | US (incl. intraday), BSE, world, forex, crypto (daily+) | 25 requests/day |
+| Tradier | US stocks, ETFs, indices | Brokerage or sandbox token (detected automatically) |
+
+**Choosing a source:** the settings screen has a per-market table (India, US, other exchanges, crypto, forex, futures). "Automatic" uses the best source you've connected. If it fails (expired token, rate limit, unsupported symbol), the app falls back to Yahoo, and the ⚠ on the source badge explains why.
+
+**Testing status:**
+- **Free sources:** tested end to end with real data.
+- **Key-based providers:** each was called with a dummy key and returned its proper "invalid key" error, which confirms the requests are well-formed. None has been tested with a real paid account yet.
+- **Reporting problems:** if one misbehaves with your key, please open an issue.
 
 ## Features
 
@@ -94,7 +123,8 @@ Click **🔍 Screener** in the header. Esc goes back to the chart.
 | File | Role |
 |---|---|
 | `server.mjs` | API, caching, key storage (`data/config.json`), per-market source routing |
-| `providers.mjs` | Yahoo, Binance, Fyers, Twelve Data, Polygon adapters and symbol mapping |
+| `providers.mjs` | Provider registry, Yahoo, Binance, Fyers, Twelve Data, Polygon |
+| `providers-extra.mjs` | Coinbase, Kraken, Upstox, CoinGecko, Kite, Alpaca, Tiingo, FMP, EODHD, Marketstack, Alpha Vantage, Tradier + shared time-zone/resampling helpers |
 | `src/app.js` | Wiring: toolbar, loading, live updates, quotes, search, shortcuts |
 | `src/chart.js` | Price chart, volume, indicator overlays and panes, legend, coordinate helpers |
 | `src/drawings.js` | Drawing tools (a Lightweight Charts series primitive) |
@@ -105,7 +135,7 @@ Click **🔍 Screener** in the header. Esc goes back to the chart.
 ## Disclaimer & limits
 
 - **Free data:** Yahoo is unofficial and may be delayed, so it's for personal use only; don't publish its data.
-- **Fyers token:** Fyers access tokens expire daily, so generate a new one each day.
+- **Broker tokens:** Fyers and Kite access tokens expire daily, so generate a new one each day.
 - **Paper trading isn't realistic execution:** no fees, slippage or margin. Your data (watchlists, alerts, drawings, trades) is stored in this browser.
 - **Not investment advice.** This is an educational tool. Market data may be delayed or wrong, and nothing here is a recommendation to buy or sell.
 
