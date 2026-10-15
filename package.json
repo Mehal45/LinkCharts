@@ -1,0 +1,14 @@
+{
+  "name": "linkcharts",
+  "version": "1.0.0",
+  "description": "Free TradingView-style charting for global markets: drawing tools, 20+ indicators, screener, watchlists, alerts, bar replay and paper trading.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "private": true
+}

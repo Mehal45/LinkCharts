@@ -1,0 +1,5 @@
+# Your API keys live here — never commit them.
+data/
+node_modules/
+.DS_Store
+Thumbs.db
