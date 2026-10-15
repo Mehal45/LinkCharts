@@ -18,6 +18,28 @@ const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const FIB_COLORS = ["#868e96", "#f03e3e", "#fd7e14", "#40c057", "#15aabf", "#4c6ef5", "#868e96"];
 const DEFAULT_COLOR = { trend: "#2962ff", ray: "#2962ff", extended: "#2962ff", hline: "#f7c948", hray: "#f7c948", vline: "#9aa1ac", rect: "#7c8cff", fib: "#868e96", text: "#e6e8eb" };
 
+export const drawingPrefs = { magnet: store.get("magnet", false), keepTool: false };
+
+/** Renders the shared left toolbar; actions go to whichever chart's Drawings is active. */
+export function renderDrawToolbar(el, getActive) {
+  const d = getActive();
+  el.innerHTML = TOOLS.map((t) => `<button class="tool ${t.id === d.tool ? "on" : ""}" data-tool="${t.id}" title="${t.label}${t.key ? " (" + t.key + ")" : ""}">${t.icon}</button>`).join("")
+    + `<span class="tool-sep"></span>
+    <button class="tool ${drawingPrefs.magnet ? "on" : ""}" data-act="magnet" title="Magnet: snap to candle open/high/low/close">🧲</button>
+    <button class="tool ${drawingPrefs.keepTool ? "on" : ""}" data-act="keep" title="Keep drawing tool selected after use">🔒</button>
+    <button class="tool" data-act="clear" title="Remove all drawings on this chart's symbol">🗑</button>`;
+  el.onclick = (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const active = getActive();
+    if (b.dataset.tool) active.setTool(b.dataset.tool);
+    if (b.dataset.act === "magnet") { drawingPrefs.magnet = !drawingPrefs.magnet; store.set("magnet", drawingPrefs.magnet); }
+    if (b.dataset.act === "keep") drawingPrefs.keepTool = !drawingPrefs.keepTool;
+    if (b.dataset.act === "clear") active.clearAll();
+    renderDrawToolbar(el, getActive);
+  };
+}
+
 class DrawingsPrimitive {
   constructor(ctrl) {
     this.ctrl = ctrl;
@@ -33,21 +55,22 @@ class DrawingsPrimitive {
 }
 
 export class Drawings {
-  constructor(view, { toolbar, floating }) {
+  constructor(view, { floating, onToolChange }) {
     this.view = view;
-    this.toolbarEl = toolbar;
+    this.onToolChange = onToolChange;
     this.floatEl = floating;
     this.symbol = null;
     this.items = [];
     this.tool = "cursor";
-    this.magnet = store.get("magnet", false);
-    this.keepTool = false;
     this.selected = null;
     this.placing = null; // { drawing, awaitingClick }
     this.primitive = new DrawingsPrimitive(this);
     this.attach(view.price);
-    bus.on("price-series", (s) => this.attach(s));
-    this.renderToolbar();
+    // Only follow this chart's own price series (several charts can be on screen).
+    this.offSeries = bus.on("price-series", ({ series, view: v }) => { if (v === this.view) this.attach(series); });
+    this.offSaved = bus.on("drawings-saved", ({ symbol, from }) => {
+      if (from !== this && symbol === this.symbol) { this.items = store.get(`drawings:${symbol}`, []); this.redraw(); }
+    });
     this.bindPointer();
   }
 
@@ -64,27 +87,25 @@ export class Drawings {
     this.redraw();
   }
 
-  save() { store.set(`drawings:${this.symbol}`, this.items); }
+  save() {
+    store.set(`drawings:${this.symbol}`, this.items);
+    bus.emit("drawings-saved", { symbol: this.symbol, from: this }); // other charts on the same symbol follow
+  }
   redraw() { this.primitive.requestUpdate?.(); }
 
-  // ---------------- toolbar ----------------
+  // Magnet and "keep tool" are shared by every chart on screen.
+  get magnet() { return drawingPrefs.magnet; }
+  get keepTool() { return drawingPrefs.keepTool; }
 
-  renderToolbar() {
-    this.toolbarEl.innerHTML = TOOLS.map((t) => `<button class="tool ${t.id === this.tool ? "on" : ""}" data-tool="${t.id}" title="${t.label}${t.key ? " (" + t.key + ")" : ""}">${t.icon}</button>`).join("")
-      + `<span class="tool-sep"></span>
-      <button class="tool ${this.magnet ? "on" : ""}" data-act="magnet" title="Magnet: snap to candle open/high/low/close">🧲</button>
-      <button class="tool ${this.keepTool ? "on" : ""}" data-act="keep" title="Keep drawing tool selected after use">🔒</button>
-      <button class="tool" data-act="clear" title="Remove all drawings on this symbol">🗑</button>`;
-    this.toolbarEl.onclick = (e) => {
-      const b = e.target.closest("button");
-      if (!b) return;
-      if (b.dataset.tool) this.setTool(b.dataset.tool);
-      if (b.dataset.act === "magnet") { this.magnet = !this.magnet; store.set("magnet", this.magnet); this.renderToolbar(); }
-      if (b.dataset.act === "keep") { this.keepTool = !this.keepTool; this.renderToolbar(); }
-      if (b.dataset.act === "clear" && this.items.length && confirm(`Remove all ${this.items.length} drawings on this symbol?`)) {
-        this.items = []; this.select(null); this.save(); this.redraw();
-      }
-    };
+  clearAll() {
+    if (!this.items.length || !confirm(`Remove all ${this.items.length} drawings on this symbol?`)) return;
+    this.items = []; this.select(null); this.save(); this.redraw();
+  }
+
+  dispose() {
+    this.offSeries?.();
+    this.offSaved?.();
+    try { this.series?.detachPrimitive(this.primitive); } catch { /* chart already removed */ }
   }
 
   setTool(tool) {
@@ -92,7 +113,7 @@ export class Drawings {
     this.placing = null;
     this.view.chart.applyOptions({ handleScroll: tool === "cursor", handleScale: tool === "cursor" });
     this.view.mainPane.classList.toggle("drawing-mode", tool !== "cursor");
-    this.renderToolbar();
+    this.onToolChange?.(tool);
     this.redraw();
   }
 

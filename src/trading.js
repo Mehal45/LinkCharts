@@ -9,9 +9,9 @@ const startFor = (ccy) => START[ccy] ?? 100_000;
 const freshAccount = () => ({ cash: {}, positions: {}, orders: [], fills: [], realized: {} });
 
 export class Trading {
-  constructor({ el, view, getPrice, getMeta, isReplay }) {
+  constructor({ el, getViews, getPrice, getMeta, isReplay }) {
     this.el = el;
-    this.view = view;
+    this.getViews = getViews;
     this.getPrice = getPrice; // (symbol) => last price (live) or replay close
     this.getMeta = getMeta; // (symbol) => { currency, ... } if known
     this.isReplay = isReplay;
@@ -227,17 +227,20 @@ export class Trading {
     };
   }
 
+  /** Draws the position (entry price) and working orders on every chart showing that symbol. */
   drawLines() {
-    const series = this.view.price;
     for (const { s, line } of this.lines) try { s.removePriceLine(line); } catch { /* series replaced */ }
     this.lines = [];
-    const sym = this.view.meta?.symbol;
-    if (!sym) return;
     const acct = this.acct;
-    const pos = acct.positions[sym];
-    if (pos) this.lines.push({ s: series, line: series.createPriceLine({ price: pos.avg, color: pos.qty > 0 ? cssVar("--up") : cssVar("--down"), lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: `${pos.qty > 0 ? "LONG" : "SHORT"} ${Math.abs(pos.qty)}` }) });
-    for (const o of acct.orders.filter((x) => x.status === "open" && x.symbol === sym)) {
-      this.lines.push({ s: series, line: series.createPriceLine({ price: o.price, color: o.tag === "SL" ? cssVar("--down") : o.tag === "TP" ? cssVar("--up") : cssVar("--accent"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `${o.tag || o.type.toUpperCase()} ${o.side} ${o.qty}` }) });
+    for (const view of this.getViews()) {
+      const sym = view.meta?.symbol, series = view.price;
+      if (!sym || !series) continue;
+      const pos = acct.positions[sym];
+      if (pos) this.lines.push({ s: series, line: series.createPriceLine({ price: pos.avg, color: pos.qty > 0 ? cssVar("--up") : cssVar("--down"), lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: `${pos.qty > 0 ? "LONG" : "SHORT"} ${Math.abs(pos.qty)}` }) });
+      for (const o of acct.orders.filter((x) => x.status === "open" && x.symbol === sym)) {
+        this.lines.push({ s: series, line: series.createPriceLine({ price: o.price, color: o.tag === "SL" ? cssVar("--down") : o.tag === "TP" ? cssVar("--up") : cssVar("--accent"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `${o.tag || o.type.toUpperCase()} ${o.side} ${o.qty}` }) });
+      }
     }
   }
+
 }

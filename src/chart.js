@@ -42,7 +42,7 @@ export class ChartView {
       this.hover = p?.time != null ? p.time : null;
       this.renderLegend();
       const price = p?.point ? this.price?.coordinateToPrice(p.point.y) : null;
-      bus.emit("crosshair", { time: p?.time ?? null, price });
+      bus.emit("crosshair", { time: p?.time ?? null, price, view: this, point: p?.point ?? null });
     });
     this._syncing = false;
     this._subscribeSync(this.chart);
@@ -61,6 +61,13 @@ export class ChartView {
       timeScale: { ...THEME.timeScale, borderColor: alpha(P.text, 0.25) },
       crosshair: { mode: LC.CrosshairMode.Normal, vertLine: { color: P.crosshair, labelBackgroundColor: P.crosshair }, horzLine: { color: P.crosshair, labelBackgroundColor: P.crosshair } },
     };
+  }
+
+  /** Removes the chart and its indicator panes from the page. */
+  dispose() {
+    for (const p of this.panes.values()) { p.chart.remove(); p.el.remove(); }
+    this.panes.clear();
+    this.chart.remove();
   }
 
   /** Recolors everything for a theme's chart palette. */
@@ -93,7 +100,7 @@ export class ChartView {
     } else {
       this.price = this.chart.addAreaSeries({ priceFormat: fmt, lineColor: P.line, topColor: alpha(P.line, 0.35), bottomColor: alpha(P.line, 0), lineWidth: 2 });
     }
-    bus.emit("price-series", this.price);
+    bus.emit("price-series", { series: this.price, view: this });
   }
 
   priceFormat() {

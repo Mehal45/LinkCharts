@@ -1,6 +1,6 @@
 // Bar replay: hide the future, then reveal bars one at a time (step or auto-play).
 // Emits "replay-bar" for each revealed bar so paper orders fill against historical prices.
-import { $, bus, fmtTime, toast } from "./util.js";
+import { bus, fmtTime, toast } from "./util.js";
 
 const SPEEDS = [[1000, "1×"], [500, "2×"], [250, "4×"], [100, "10×"], [40, "25×"]];
 
@@ -154,4 +154,3 @@ export class Replay {
 }
 
 export const isReplayKey = (e) => e.shiftKey && (e.key === "ArrowRight" || e.code === "Space");
-export const replayBarEl = () => $("replayBar");

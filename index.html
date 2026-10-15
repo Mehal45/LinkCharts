@@ -76,13 +76,32 @@
     .chart-area { position: relative; min-height: 0; display: grid; grid-template-rows: auto 1fr; }
     .chart-bar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
     .charts { display: grid; grid-template-rows: 1fr; min-height: 0; position: relative; }
+    /* multi-chart layouts */
+    .slots { display: grid; gap: 3px; min-height: 0; background: var(--line); }
+    .slot { position: relative; display: grid; grid-template-rows: 1fr; min-height: 0; min-width: 0; background: var(--bg); outline: 2px solid transparent; outline-offset: -2px; }
+    .slots.multi .slot.active { outline-color: var(--accent); }
+    .slot .charts { min-height: 0; }
+    .slot .replay-bar { bottom: 12px; min-width: 0; max-width: calc(100% - 20px); flex-wrap: wrap; }
+    .slots.multi .legend .l1 b { font-size: 13px; }
+    .slots.multi .legend .l2 span { font-size: 11px; }
+    .slot-tag { position: absolute; right: 70px; top: 6px; z-index: 6; font-size: 11px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; pointer-events: none; }
+    .slots:not(.multi) .slot-tag { display: none; }
+    .layout-pop { width: 290px; padding: 10px; }
+    .layout-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .layout-opt { display: grid; gap: 2px; height: 44px; padding: 4px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+    .layout-opt:hover { border-color: var(--muted); }
+    .layout-opt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, var(--panel2)); }
+    .layout-opt i { background: var(--muted); opacity: .55; border-radius: 2px; }
+    .layout-opt.on i { background: var(--accent); opacity: .8; }
+    .layout-sync { display: grid; gap: 4px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12.5px; }
+    .layout-sync label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
     .pane { position: relative; min-height: 0; }
     .pane.sub { border-top: 1px solid var(--line); }
     .pane-label { position: absolute; left: 10px; top: 4px; z-index: 3; color: var(--muted); font-size: 11px; cursor: pointer; }
     .pane-label:hover { color: var(--text); }
     .pane-x { position: absolute; right: 70px; top: 2px; z-index: 3; border: 0; background: none; color: var(--muted); padding: 2px 6px; display: none; }
     .pane.sub:hover .pane-x { display: block; }
-    #mainPane.drawing-mode, #mainPane.replay-picking { cursor: crosshair; }
+    .pane.main.drawing-mode, .pane.main.replay-picking { cursor: crosshair; }
     .legend { position: absolute; left: 10px; top: 6px; z-index: 5; font-variant-numeric: tabular-nums; pointer-events: none; }
     .legend .l1 b { font-size: 14px; margin-right: 8px; }
     .legend .l2 span { margin-right: 9px; font-size: 12px; } .legend i { font-style: normal; }
@@ -327,17 +346,13 @@
           <div class="chart-bar">
             <span class="muted small" id="updated"></span>
             <span class="spacer"></span>
+            <div class="menu">
+              <button class="small" id="layoutBtn" title="Chart layout — show several charts side by side">⊞ Layout</button>
+              <div class="menu-pop right layout-pop" id="layoutPop" hidden></div>
+            </div>
             <button class="small" id="fitBtn" title="Fit all data">⤢ Fit</button>
           </div>
-          <div class="charts" id="charts">
-            <div class="pane" id="mainPane">
-              <div class="legend" id="legend"></div>
-              <div class="float-bar" id="floatBar" hidden></div>
-              <div class="loading" id="loading">Loading…</div>
-              <div class="error" id="error" hidden></div>
-            </div>
-          </div>
-          <div class="replay-bar" id="replayBar" hidden></div>
+          <div class="slots" id="slots"></div>
         </div>
         <section class="bottom" id="bottomPanel"></section>
       </section>

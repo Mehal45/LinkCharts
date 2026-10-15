@@ -5,9 +5,9 @@ import { store, uid, esc, short, fmtPx, precisionFor, bus, toast, beep, notify, 
 const CONDITIONS = { above: "Price goes above", below: "Price goes below", cross: "Price crosses" };
 
 export class Alerts {
-  constructor({ el, view, getPrice, getSymbol }) {
+  constructor({ el, getViews, getPrice, getSymbol }) {
     this.el = el;
-    this.view = view;
+    this.getViews = getViews;
     this.getPrice = getPrice;
     this.getSymbol = getSymbol;
     this.alerts = store.get("alerts", []);
@@ -111,13 +111,17 @@ export class Alerts {
     };
   }
 
+  /** Draws active alerts as dashed lines on every chart currently showing that symbol. */
   drawLines() {
-    const series = this.view.price;
     for (const { s, line } of this.lines) try { s.removePriceLine(line); } catch { /* series replaced */ }
     this.lines = [];
-    const sym = this.getSymbol();
-    for (const a of this.alerts.filter((x) => x.active && x.symbol === sym)) {
-      this.lines.push({ s: series, line: series.createPriceLine({ price: a.price, color: "#f7c948", lineStyle: 1, lineWidth: 1, axisLabelVisible: true, title: "🔔" }) });
+    for (const view of this.getViews()) {
+      const sym = view.meta?.symbol;
+      if (!sym || !view.price) continue;
+      for (const a of this.alerts.filter((x) => x.active && x.symbol === sym)) {
+        this.lines.push({ s: view.price, line: view.price.createPriceLine({ price: a.price, color: getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#f7c948", lineStyle: 1, lineWidth: 1, axisLabelVisible: true, title: "🔔" }) });
+      }
     }
   }
+
 }

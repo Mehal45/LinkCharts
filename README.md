@@ -92,6 +92,25 @@ The server only listens on your own computer (127.0.0.1), because it can store y
   - **Two separate accounts:** *Live* (current prices) and *Replay*, where orders fill against the replayed bars so you can practise on past data.
   - Each currency gets its own virtual balance (₹10,00,000 or $100,000).
 
+## Multiple charts
+
+Click **⊞ Layout** above the chart to show several charts side by side. There are 10 layouts:
+
+- 1 chart
+- 2 side by side, or 2 stacked
+- 3 in a row, 3 stacked, or 1 big + 2
+- a 2 × 2 grid, or 1 big + 3 below
+- a 3 × 2 or 4 × 2 grid (up to 8 charts)
+
+- **Separate charts:** each chart has its own symbol, interval, chart type, indicators, drawings and replay, and loads its own data (crypto charts stream live).
+- **The active chart:** click a chart to make it active (it gets an outline), or press **Alt+1 … Alt+8**. The search box, watchlist, interval and chart-type buttons, indicators, drawing tools, replay and trade ticket all act on it, and the details panel follows it.
+- **Sync across charts** (in the same menu):
+  - **Symbol:** every chart shows the same symbol.
+  - **Interval:** every chart changes interval together.
+  - **Crosshair:** hovering one chart puts the crosshair on the same moment in real time on the others, even across different time zones and intervals.
+- **Shared lines:** price alerts and paper-trading positions or orders appear on every chart showing that symbol.
+- **Remembered:** the layout and each chart's settings are saved. Closing charts and reopening a bigger layout brings them back.
+
 ## Themes
 
 A theme picker with live thumbnails appears when you open LinkCharts. Untick "Show this when LinkCharts opens" to stop it, and reopen it any time with **🎨 Theme** in the top bar. Every theme restyles the whole interface and the chart itself: background, grid, candle, volume and indicator colours.
@@ -131,6 +150,7 @@ Click **🔍 Screener** in the header. Esc goes back to the chart.
 | Del · Esc | Delete selected drawing · cancel |
 | Alt+A | New alert |
 | Alt+R | Replay on/off |
+| Alt+1 … Alt+8 | Make chart 1–8 the active chart |
 | Shift+→ · Shift+Space | Replay: next bar · play/pause |
 
 ## Files
