@@ -3,6 +3,7 @@
 // long and short positions, realized/unrealized P&L. Everything stays in this browser.
 import { store, uid, esc, short, fmtPx, fmtMoney, signed, cls, precisionFor, bus, toast, modal, fmtTime } from "./util.js";
 
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const START = { INR: 1_000_000, USD: 100_000, EUR: 100_000, GBP: 100_000, JPY: 10_000_000 };
 const startFor = (ccy) => START[ccy] ?? 100_000;
 const freshAccount = () => ({ cash: {}, positions: {}, orders: [], fills: [], realized: {} });
@@ -234,9 +235,9 @@ export class Trading {
     if (!sym) return;
     const acct = this.acct;
     const pos = acct.positions[sym];
-    if (pos) this.lines.push({ s: series, line: series.createPriceLine({ price: pos.avg, color: pos.qty > 0 ? "#22ab94" : "#f23645", lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: `${pos.qty > 0 ? "LONG" : "SHORT"} ${Math.abs(pos.qty)}` }) });
+    if (pos) this.lines.push({ s: series, line: series.createPriceLine({ price: pos.avg, color: pos.qty > 0 ? cssVar("--up") : cssVar("--down"), lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: `${pos.qty > 0 ? "LONG" : "SHORT"} ${Math.abs(pos.qty)}` }) });
     for (const o of acct.orders.filter((x) => x.status === "open" && x.symbol === sym)) {
-      this.lines.push({ s: series, line: series.createPriceLine({ price: o.price, color: o.tag === "SL" ? "#f23645" : o.tag === "TP" ? "#22ab94" : "#2962ff", lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `${o.tag || o.type.toUpperCase()} ${o.side} ${o.qty}` }) });
+      this.lines.push({ s: series, line: series.createPriceLine({ price: o.price, color: o.tag === "SL" ? cssVar("--down") : o.tag === "TP" ? cssVar("--up") : cssVar("--accent"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `${o.tag || o.type.toUpperCase()} ${o.side} ${o.qty}` }) });
     }
   }
 }

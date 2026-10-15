@@ -92,6 +92,21 @@ The server only listens on your own computer (127.0.0.1), because it can store y
   - **Two separate accounts:** *Live* (current prices) and *Replay*, where orders fill against the replayed bars so you can practise on past data.
   - Each currency gets its own virtual balance (₹10,00,000 or $100,000).
 
+## Themes
+
+A theme picker with live thumbnails appears when you open LinkCharts. Untick "Show this when LinkCharts opens" to stop it, and reopen it any time with **🎨 Theme** in the top bar. Every theme restyles the whole interface and the chart itself: background, grid, candle, volume and indicator colours.
+
+| Group | Themes |
+|---|---|
+| Classic | **Midnight** (default), **Daylight** |
+| Style | **Glossy Glass** (frosted panels over a moving gradient), **Aesthetic** (pastel), **Black & White**, **White & Black** (print style), **Terminal** (green phosphor, monospace), **Sunset** |
+| Trading psychology | **Calm Mind**, **Focus**, **Colour-blind safe** |
+
+**About the psychology themes:**
+- **Calm Mind:** swaps alarm-red falling candles for a calm slate-blue and hides the grid, to dampen panic selling and revenge trades.
+- **Focus:** dims everything except the chart until you point at it, to cut distraction and overtrading.
+- **Colour-blind safe:** uses blue/orange instead of red/green, which helps with red-green colour blindness.
+
 ## Stock screener
 
 Click **🔍 Screener** in the header. Esc goes back to the chart.
@@ -130,6 +145,7 @@ Click **🔍 Screener** in the header. Esc goes back to the chart.
 | `src/drawings.js` | Drawing tools (a Lightweight Charts series primitive) |
 | `src/indicators.js` | Indicator maths and registry |
 | `screener.mjs` · `src/screener.js` | Screener backend (Yahoo screener + performance) and UI |
+| `src/themes.js` | Theme definitions (UI variables + chart palette) and the theme picker |
 | `src/watchlists.js` · `src/alerts.js` · `src/trading.js` · `src/replay.js` · `src/details.js` · `src/settings.js` | Panels |
 
 ## Disclaimer & limits

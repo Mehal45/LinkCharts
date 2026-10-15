@@ -13,12 +13,21 @@ export const THEME = {
   autoSize: true,
 };
 
+/** "#rrggbb" + opacity → "rgba(r,g,b,a)"; other color strings pass through. */
+function alpha(color, a) {
+  const m = /^#([0-9a-f]{6})$/i.exec(color || "");
+  if (!m) return color;
+  const n = parseInt(m[1], 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
 export class ChartView {
   constructor({ charts, mainPane, legend }) {
     this.chartsEl = charts;
     this.mainPane = mainPane;
     this.legendEl = legend;
-    this.chart = LC.createChart(mainPane, THEME);
+    this.palette = { bg: "#0f1115", text: "#9aa1ac", grid: "#1a1f26", up: "#22ab94", down: "#f23645", line: "#2962ff", crosshair: "#758696" };
+    this.chart = LC.createChart(mainPane, this.chartOptions());
     this.type = "candles";
     this.candles = [];
     this.meta = null;
@@ -40,23 +49,49 @@ export class ChartView {
     this.buildPriceSeries();
   }
 
+  // ---------------- theme ----------------
+
+  chartOptions() {
+    const P = this.palette;
+    return {
+      ...THEME,
+      layout: { ...THEME.layout, background: { type: "solid", color: P.bg }, textColor: P.text, fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font") || THEME.layout.fontFamily },
+      grid: { vertLines: { color: P.grid || "rgba(0,0,0,0)", visible: !!P.grid }, horzLines: { color: P.grid || "rgba(0,0,0,0)", visible: !!P.grid } },
+      rightPriceScale: { borderColor: alpha(P.text, 0.25) },
+      timeScale: { ...THEME.timeScale, borderColor: alpha(P.text, 0.25) },
+      crosshair: { mode: LC.CrosshairMode.Normal, vertLine: { color: P.crosshair, labelBackgroundColor: P.crosshair }, horzLine: { color: P.crosshair, labelBackgroundColor: P.crosshair } },
+    };
+  }
+
+  /** Recolors everything for a theme's chart palette. */
+  applyTheme(palette) {
+    this.palette = palette;
+    const { timeScale, ...opts } = this.chartOptions();
+    this.chart.applyOptions({ ...opts, timeScale: { borderColor: timeScale.borderColor } });
+    for (const p of this.panes.values()) p.chart.applyOptions({ ...opts, timeScale: { borderColor: timeScale.borderColor } });
+    this.setType(this.type); // rebuilds the price series with the new candle colors
+    if (this.volume && this.candles.length) this.volume.setData(this.volumeData(this.candles));
+    this.renderStudies();
+  }
+
   // ---------------- series ----------------
 
   buildPriceSeries() {
+    const P = this.palette;
     if (this.price) this.chart.removeSeries(this.price);
     const fmt = this.priceFormat();
     if (this.type === "candles" || this.type === "hollow") {
       const hollow = this.type === "hollow";
       this.price = this.chart.addCandlestickSeries({
-        priceFormat: fmt, borderVisible: hollow, upColor: hollow ? "rgba(0,0,0,0)" : "#22ab94", downColor: "#f23645",
-        borderUpColor: "#22ab94", borderDownColor: "#f23645", wickUpColor: "#22ab94", wickDownColor: "#f23645",
+        priceFormat: fmt, borderVisible: hollow || !!P.hollowUp, upColor: hollow || P.hollowUp ? "rgba(0,0,0,0)" : P.up, downColor: P.down,
+        borderUpColor: P.up, borderDownColor: P.down, wickUpColor: P.up, wickDownColor: P.down,
       });
     } else if (this.type === "bars") {
-      this.price = this.chart.addBarSeries({ priceFormat: fmt, upColor: "#22ab94", downColor: "#f23645", thinBars: false });
+      this.price = this.chart.addBarSeries({ priceFormat: fmt, upColor: P.up, downColor: P.down, thinBars: false });
     } else if (this.type === "line") {
-      this.price = this.chart.addLineSeries({ priceFormat: fmt, color: "#2962ff", lineWidth: 2 });
+      this.price = this.chart.addLineSeries({ priceFormat: fmt, color: P.line, lineWidth: 2 });
     } else {
-      this.price = this.chart.addAreaSeries({ priceFormat: fmt, lineColor: "#2962ff", topColor: "rgba(41,98,255,.35)", bottomColor: "rgba(41,98,255,0)", lineWidth: 2 });
+      this.price = this.chart.addAreaSeries({ priceFormat: fmt, lineColor: P.line, topColor: alpha(P.line, 0.35), bottomColor: alpha(P.line, 0), lineWidth: 2 });
     }
     bus.emit("price-series", this.price);
   }
@@ -80,7 +115,8 @@ export class ChartView {
   }
 
   volumeData(c) {
-    return c.map((x) => ({ time: x.time, value: x.volume || 0, color: x.close >= x.open ? "rgba(34,171,148,.4)" : "rgba(242,54,69,.4)" }));
+    const up = alpha(this.palette.up, 0.4), down = alpha(this.palette.down, 0.4);
+    return c.map((x) => ({ time: x.time, value: x.volume || 0, color: x.close >= x.open ? up : down }));
   }
 
   /** Replaces all data. `fitTail` = show the last N bars. */
@@ -169,7 +205,8 @@ export class ChartView {
       el.innerHTML = `<div class="pane-label"></div><button class="pane-x" title="Remove">✕</button>`;
       el.querySelector(".pane-x").onclick = () => bus.emit("remove-study", s.id);
       this.chartsEl.appendChild(el);
-      const chart = LC.createChart(el, { ...THEME, timeScale: { ...THEME.timeScale, timeVisible: this.intraday } });
+      const opts = this.chartOptions();
+      const chart = LC.createChart(el, { ...opts, timeScale: { ...opts.timeScale, timeVisible: this.intraday } });
       this._subscribeSync(chart);
       this.panes.set(s.id, { el, chart, series: [] });
     }
@@ -225,7 +262,9 @@ export class ChartView {
       pane._sig = JSON.stringify(study.params);
       (out.levels || []).forEach((lvl) => pane.series[pane.series.length - 1]?.createPriceLine({ price: lvl, color: "#4a515c", lineStyle: 2, lineWidth: 1, axisLabelVisible: true, title: "" }));
     }
-    out.lines.forEach((l, i) => pane.series[i].setData(l.data));
+    // Histograms (e.g. MACD) take the theme's up/down colors.
+    const up = alpha(this.palette.up, 0.6), down = alpha(this.palette.down, 0.6);
+    out.lines.forEach((l, i) => pane.series[i].setData(l.type === "histogram" ? l.data.map((d) => ({ ...d, color: d.value >= 0 ? up : down })) : l.data));
   }
 
   _subscribeSync(chart) {

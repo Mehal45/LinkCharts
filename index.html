@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LinkCharts</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Quicksand:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     :root {
@@ -15,14 +15,14 @@
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
     html, body { height: 100%; margin: 0; }
-    body { background: var(--bg); color: var(--text); font: 13px/1.4 Inter, system-ui, sans-serif; overflow: hidden; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--font, Inter), system-ui, sans-serif; overflow: hidden; transition: background-color .25s, color .25s; }
     button, input, select { font: inherit; color: inherit; }
     button { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
     button:hover { border-color: #3a414c; background: var(--panel3); }
     button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button.buy, button.primary.buy { background: var(--up); border-color: var(--up); color: #fff; }
-    button.sell, button.primary.sell { background: var(--down); border-color: var(--down); color: #fff; }
+    button.buy, button.primary.buy { background: var(--up); border-color: var(--up); color: var(--on-up, #fff); font-weight: 600; }
+    button.sell, button.primary.sell { background: var(--down); border-color: var(--down); color: var(--on-down, #fff); font-weight: 600; }
     button.danger { color: var(--down); }
     button.icon { background: none; border-color: transparent; padding: 3px 7px; }
     button.icon:hover { background: var(--panel2); }
@@ -201,6 +201,61 @@
     td.hot { color: var(--warn); font-weight: 600; }
     .error-note { color: var(--down); padding: 20px; }
 
+    /* ---------- themes ---------- */
+    button.on, button.primary, .group button.on, .seg-toggle button.on { color: var(--accent-ink, #fff); }
+    button, input, select, .modal, .prov, .pill-pop, .menu-pop, .results, .toast { border-radius: var(--radius); }
+    .tbl td, .al-row, .al-log > div { border-bottom-color: var(--panel2); }
+
+    /* Glossy glass: frosted translucent panels over a drifting aurora gradient */
+    body.theme-glass { background: linear-gradient(125deg, #12163a, #3b1d60 30%, #0e4d64 60%, #1b2a6b 85%, #12163a); background-size: 300% 300%; animation: glass-drift 30s ease infinite; }
+    @keyframes glass-drift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    body.theme-glass header, body.theme-glass .tools, body.theme-glass .right, body.theme-glass .side-tabs, body.theme-glass .bottom,
+    body.theme-glass .chart-bar, body.theme-glass footer, body.theme-glass .modal, body.theme-glass .pill-pop, body.theme-glass .menu-pop,
+    body.theme-glass .results, body.theme-glass .replay-bar, body.theme-glass .float-bar {
+      background: rgba(255,255,255,.07); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+    }
+    body.theme-glass .app { background: transparent; }
+    body.theme-glass .screener-view { background: rgba(10,14,35,.55); backdrop-filter: blur(22px); }
+    body.theme-glass button:not(.on):not(.primary):not(.buy):not(.sell) { background: rgba(255,255,255,.08); }
+
+    /* Aesthetic: pastel gradient wash, rounder everything */
+    body.theme-aesthetic { background: linear-gradient(135deg, #fde7f3, #ece4ff 50%, #ffe9d6); }
+    body.theme-aesthetic header, body.theme-aesthetic .tools, body.theme-aesthetic .right, body.theme-aesthetic .side-tabs,
+    body.theme-aesthetic .bottom, body.theme-aesthetic footer, body.theme-aesthetic .chart-bar { background: rgba(255,255,255,.55); backdrop-filter: blur(10px); }
+    body.theme-aesthetic .modal-bg { background: rgba(120,90,160,.25); }
+
+    /* Terminal: monospace + faint scanlines */
+    body.theme-terminal::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 100;
+      background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.18) 2px 3px); }
+    body.theme-terminal { text-shadow: 0 0 4px rgba(57,255,20,.25); }
+
+    /* Focus: everything except the chart is dimmed until you point at it */
+    body.theme-focus header, body.theme-focus .tools, body.theme-focus .right, body.theme-focus .side-tabs, body.theme-focus .bottom, body.theme-focus footer {
+      opacity: .35; transition: opacity .3s ease; }
+    body.theme-focus header:hover, body.theme-focus .tools:hover, body.theme-focus .right:hover, body.theme-focus .side-tabs:hover,
+    body.theme-focus .bottom:hover, body.theme-focus footer:hover, body.theme-focus header:focus-within, body.theme-focus .right:focus-within { opacity: 1; }
+
+    /* Theme picker */
+    .modal.theme-modal { width: min(1080px, 96vw); }
+    .th-intro { margin-top: 0; }
+    .th-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .th-card { display: flex; flex-direction: column; gap: 6px; padding: 8px; text-align: left; background: var(--panel2); border: 2px solid transparent; border-radius: 12px; white-space: normal; transition: transform .15s, border-color .15s; }
+    .th-card:hover { transform: translateY(-2px); border-color: var(--line); }
+    .th-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+    .th-check { display: none; margin-left: auto; color: var(--accent2); font-size: 12px; font-weight: 600; }
+    .th-card.selected .th-check { display: inline; }
+    .th-meta { display: flex; align-items: center; gap: 6px; }
+    .th-tag { line-height: 1.35; }
+    .th-thumb { height: 104px; border-radius: 8px; overflow: hidden; display: grid; grid-template-rows: 16px 1fr; border: 1px solid rgba(127,127,127,.25); }
+    .th-head { display: flex; align-items: center; gap: 6px; padding: 0 6px; font-size: 8px; font-weight: 700; }
+    .th-head i { width: 8px; height: 8px; border-radius: 2px; }
+    .th-body { display: grid; grid-template-columns: 18px 1fr 30px; min-height: 0; }
+    .th-side { display: flex; flex-direction: column; gap: 5px; padding: 6px 4px; }
+    .th-side b { height: 3px; border-radius: 2px; opacity: .7; }
+    .th-chart { width: 100%; height: 100%; }
+    .th-foot { position: sticky; bottom: -14px; background: var(--panel); padding: 10px 0 2px; margin-top: 14px; }
+
     /* modals & toasts */
     .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 50; }
     .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: min(440px, 94vw); max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,.6); }
@@ -222,7 +277,7 @@
     .seg-toggle { display: flex; gap: 2px; background: var(--panel2); border-radius: 8px; padding: 2px; margin-bottom: 8px; }
     .seg-toggle button { flex: 1; border: 0; background: none; }
     .seg-toggle button.on { background: var(--accent); }
-    .seg-toggle button.on.buy { background: var(--up); } .seg-toggle button.on.sell { background: var(--down); }
+    .seg-toggle button.on.buy { background: var(--up); color: var(--on-up, #fff); } .seg-toggle button.on.sell { background: var(--down); color: var(--on-down, #fff); }
     .ticket-sum { color: var(--muted); font-size: 12px; margin-top: 6px; }
     .prov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
     .prov { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
@@ -256,6 +311,7 @@
       <button id="replayBtn" title="Bar replay (Alt+R)">⏪<span class="lbl"> Replay</span></button>
       <button id="tradeBtn" title="Paper trade">📄<span class="lbl"> Trade</span></button>
       <button id="screenerBtn" title="Stock screener">🔍<span class="lbl"> Screener</span></button>
+      <button id="themeBtn" title="Themes">🎨<span class="lbl"> Theme</span></button>
       <span class="spacer"></span>
       <span id="sourceBadge"></span>
       <span class="hstatus" id="mstatus"></span>

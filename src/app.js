@@ -9,6 +9,7 @@ import { Alerts } from "./alerts.js";
 import { Trading } from "./trading.js";
 import { Details } from "./details.js";
 import { Screener } from "./screener.js";
+import { applyTheme, currentTheme, openThemePicker } from "./themes.js";
 import { openSettings } from "./settings.js";
 
 const INTERVALS = [["1m", "1m"], ["5m", "5m"], ["15m", "15m"], ["30m", "30m"], ["60m", "1H"], ["1d", "1D"], ["1wk", "1W"], ["1mo", "1M"]];
@@ -44,6 +45,8 @@ const isIntraday = () => /m$/.test(state.interval);
 // ---------------- components ----------------
 
 const view = new ChartView({ charts: $("charts"), mainPane: $("mainPane"), legend: $("legend") });
+bus.on("theme", (t) => view.applyTheme(t.chart));
+applyTheme(currentTheme().id); // restore the saved theme before anything is drawn
 view.type = state.type;
 view.setType(state.type);
 view.setStudies(state.studies);
@@ -109,6 +112,7 @@ $("alertBtn").onclick = () => alerts.openDialog();
 $("tradeBtn").onclick = () => trading.openTicket(state.symbol, "buy");
 $("settingsBtn").onclick = () => openSettings();
 $("screenerBtn").onclick = () => (screener.el.hidden ? screener.open() : screener.close());
+$("themeBtn").onclick = () => openThemePicker();
 $("indBtn").onclick = () => openIndicatorPicker();
 $("fitBtn").onclick = () => view.fit();
 $("symbolBtn").onclick = () => $("search").focus();
@@ -368,6 +372,8 @@ document.addEventListener("keydown", (e) => {
 
 // ---------------- boot ----------------
 
+// Theme picker greets people when the site opens (they can turn this off inside the picker).
+if (store.get("theme-popup", true)) setTimeout(() => openThemePicker({ startup: true }), 400);
 renderHeader();
 renderSidebar();
 drawings.setSymbol(state.symbol);
