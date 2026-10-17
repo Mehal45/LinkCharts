@@ -1,7 +1,8 @@
 // LinkCharts server: static files + market-data API with pluggable providers.
 // Binds to 127.0.0.1 only, because it stores your API keys in data/config.json.
-// Usage: node server.mjs [port]
+// Usage: node server.mjs [port] [--open]   (--open launches the browser once it's running)
 import http from "node:http";
+import { exec } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +10,12 @@ import { PROVIDERS, MARKETS, INTERVALS, marketOf, yahoo, ProviderError } from ".
 import { runScreen, performance, SCREENER_MARKETS, SECTORS } from "./screener.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const port = Number(process.argv[2] || 5174);
+const port = Number(process.argv.slice(2).find((a) => /^\d+$/.test(a)) || 5174);
+const openBrowser = process.argv.includes("--open");
+function launchBrowser(url) {
+  const cmd = process.platform === "win32" ? `start "" "${url}"` : process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;
+  exec(cmd, () => { /* no browser to launch; the URL is printed above */ });
+}
 const configPath = path.join(root, "data", "config.json");
 // Everything the app remembers (watchlists, alerts, drawings, paper trades, layouts, theme…)
 // is mirrored here so it survives cleared browser data or a different browser.
@@ -249,4 +255,13 @@ http.createServer(async (req, res) => {
   }
   res.writeHead(200, { "Content-Type": types[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-store" });
   fs.createReadStream(file).pipe(res);
-}).listen(port, "127.0.0.1", () => console.log(`LinkCharts running at http://localhost:${port}`));
+}).on("error", (e) => {
+  if (e.code !== "EADDRINUSE") throw e;
+  // Probably LinkCharts is already running (e.g. started twice): just open it.
+  console.log(`Port ${port} is already in use. If LinkCharts is already running, open http://localhost:${port}`);
+  if (openBrowser) launchBrowser(`http://localhost:${port}`);
+}).listen(port, "127.0.0.1", () => {
+  console.log(`LinkCharts running at http://localhost:${port}`);
+  console.log("Keep this window open while you use LinkCharts. Close it (or press Ctrl+C) to stop.");
+  if (openBrowser) launchBrowser(`http://localhost:${port}`);
+});

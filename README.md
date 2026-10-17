@@ -11,17 +11,56 @@ No account or API key is needed to start. It uses free data out of the box, and 
 
 > Charts are rendered with [TradingView Lightweight Charts™](https://github.com/tradingview/lightweight-charts) (Apache-2.0). LinkCharts is not affiliated with TradingView.
 
-## Quick start
+## Installation
 
-You need [Node.js](https://nodejs.org) 18 or newer (no other installs).
+It takes about 5 minutes. No account, API key or coding is needed.
+
+### Step 1: Install Node.js (one time only)
+
+1. Go to **[nodejs.org](https://nodejs.org)** and download the **LTS** version.
+2. Open the downloaded file and click **Next** through the installer, keeping the default options.
+
+### Step 2: Download LinkCharts
+
+1. At the top of this GitHub page, click the green **Code** button, then **Download ZIP**.
+2. Find the ZIP in your Downloads folder and unzip it: right-click → **Extract All** on Windows, or double-click it on a Mac.
+3. Move the unzipped `LinkCharts-main` folder somewhere you'll keep it, such as Documents.
+
+### Step 3: Start it
+
+| Your computer | What to do |
+|---|---|
+| **Windows** | Open the folder and double-click **`Start LinkCharts.bat`**. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway**. |
+| **Mac** | Open the folder, **right-click** **`Start LinkCharts.command`** and choose **Open**, then **Open** again. You only need the right-click the first time; after that, a double-click works. |
+| **Linux** | In a terminal inside the folder, run `npm start`. |
+
+LinkCharts opens in your browser at **http://localhost:5174**. Chrome, Edge and Firefox all work.
+
+- **Keep the black window open** while you use LinkCharts. Closing it stops the app.
+- **Next time,** just repeat Step 3. Your watchlists, drawings, alerts and settings are saved on your PC (see [Your data is saved on your PC](#your-data-is-saved-on-your-pc)).
+
+### Updating to a new version
+
+Download the new ZIP (Step 2). Then copy the **`data`** folder from your old LinkCharts folder into the new one, so your saved data and API keys come with you.
+
+### If something goes wrong
+
+| Problem | Fix |
+|---|---|
+| *"Node.js is not installed"* or `'node' is not recognized` | Do Step 1, then **restart your computer** and try again. |
+| *"Port 5174 is already in use"* | LinkCharts is probably already running in another window, so just open http://localhost:5174. To use a different port, run `node server.mjs 5175` in the folder and open http://localhost:5175. |
+| The page is blank or won't load | Make sure the black window is still open, then refresh the page. |
+
+### For developers
 
 ```bash
 git clone https://github.com/Mehal45/LinkCharts.git
 cd LinkCharts
-npm start
+npm start          # starts the server and opens the browser
+npm run serve      # starts the server only
 ```
 
-Then open **http://localhost:5174** in Chrome, Edge or Firefox.
+There are no dependencies to install and no build step.
 
 The server only listens on your own computer (127.0.0.1), because it can store your API keys. Each person runs their own copy.
 
@@ -170,6 +209,7 @@ Everything you set up is saved automatically to **`market-app/data/userdata.json
 
 | File | Role |
 |---|---|
+| `Start LinkCharts.bat` · `Start LinkCharts.command` | Double-click launchers for Windows and Mac |
 | `server.mjs` | API, caching, key storage (`data/config.json`), saved user data (`data/userdata.json`), per-market source routing |
 | `src/boot.js` | Startup: loads saved data from disk before the app starts |
 | `providers.mjs` | Provider registry, Yahoo, Binance, Fyers, Twelve Data, Polygon |

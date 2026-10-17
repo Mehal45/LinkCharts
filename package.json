@@ -4,7 +4,8 @@
   "description": "Free TradingView-style charting for global markets: drawing tools, 20+ indicators, screener, watchlists, alerts, bar replay and paper trading.",
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs --open",
+    "serve": "node server.mjs"
   },
   "engines": {
     "node": ">=18"
