@@ -1,6 +1,6 @@
 // Drawing tools rendered as a Lightweight Charts series primitive, so they pan/zoom with the chart.
 // A drawing is { id, type, points: [{ time, price }], color, width, text? }, stored per symbol.
-import { store, uid, bus, fmtPx, esc, precisionFor } from "./util.js";
+import { store, uid, bus, fmtPx, esc, precisionFor, askText, askConfirm } from "./util.js";
 
 export const TOOLS = [
   { id: "cursor", icon: "↖", label: "Cursor", key: "" },
@@ -97,8 +97,9 @@ export class Drawings {
   get magnet() { return drawingPrefs.magnet; }
   get keepTool() { return drawingPrefs.keepTool; }
 
-  clearAll() {
-    if (!this.items.length || !confirm(`Remove all ${this.items.length} drawings on this symbol?`)) return;
+  async clearAll() {
+    if (!this.items.length) return;
+    if (!(await askConfirm("Remove drawings", `Remove all ${this.items.length} drawings on this symbol?`, { okText: "Remove all", danger: true }))) return;
     this.items = []; this.select(null); this.save(); this.redraw();
   }
 
@@ -168,9 +169,15 @@ export class Drawings {
       const def = TOOLS.find((t) => t.id === this.tool);
       const d = { id: uid(), type: this.tool, points: def.points === 2 ? [p, { ...p }] : [p], color: DEFAULT_COLOR[this.tool], width: 2 };
       if (d.type === "text") {
-        const text = prompt("Text note:", "");
-        if (!text) return;
-        d.text = text;
+        // Ask for the note in an in-app dialog, then place it where the user clicked.
+        askText("Text note", { label: "Note", placeholder: "e.g. Breakout level", okText: "Add note" }).then((text) => {
+          if (!text) return;
+          d.text = text;
+          this.items.push(d);
+          this.placing = { drawing: d };
+          this.finishPlacing();
+        });
+        return;
       }
       this.items.push(d);
       if (def.points === 1) { this.placing = { drawing: d }; this.finishPlacing(); return; }
@@ -269,9 +276,9 @@ export class Drawings {
     else this.select(null);
   }
 
-  editText(d) {
-    const t = prompt("Text note:", d.text);
-    if (t != null && t.trim()) { d.text = t; this.save(); this.redraw(); }
+  async editText(d) {
+    const t = await askText("Edit note", { label: "Note", value: d.text, okText: "Save" });
+    if (t) { d.text = t; this.save(); this.redraw(); }
   }
 
   // ---------------- floating properties bar ----------------

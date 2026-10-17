@@ -1,6 +1,6 @@
 // Multiple watchlists, each with collapsible sections; drag rows to reorder.
 // List: { id, name, items: [{ t: "sec", id, title, collapsed } | { t: "sym", s }] }
-import { store, uid, esc, short, fmtPx, signed, cls, precisionFor, bus, toast } from "./util.js";
+import { store, uid, esc, short, fmtPx, signed, cls, precisionFor, bus, toast, askText, askConfirm } from "./util.js";
 
 const sec = (title) => ({ t: "sec", id: uid(), title, collapsed: false });
 const syms = (...list) => list.map((s) => ({ t: "sym", s }));
@@ -80,7 +80,7 @@ export class Watchlists {
     this.renderRows();
   }
 
-  onHeadAction(a) {
+  async onHeadAction(a) {
     const pop = this.el.querySelector(".menu-pop");
     if (a === "menu") { pop.hidden = !pop.hidden; return; }
     pop.hidden = true;
@@ -89,25 +89,30 @@ export class Watchlists {
       if (!list.items.some((i) => i.t === "sym" && i.s === this.current)) list.items.push({ t: "sym", s: this.current });
     }
     if (a === "section") {
-      const title = prompt("Section name:", "New section");
-      if (title) list.items.push(sec(title.toUpperCase()));
+      const title = await askText("Add a section", { label: "Section name", placeholder: "e.g. Banks, IT, Swing trades", okText: "Add section" });
+      if (!title) return;
+      list.items.push(sec(title.toUpperCase()));
     }
     if (a === "new") {
-      const name = prompt("Watchlist name:", "My watchlist");
+      const name = await askText("New watchlist", { label: "Watchlist name", value: "My watchlist", okText: "Create" });
       if (!name) return;
       const l = { id: uid(), name, items: [] };
       this.lists.push(l);
       this.activeId = l.id;
     }
-    if (a === "rename") { const n = prompt("Rename watchlist:", list.name); if (n) list.name = n; }
+    if (a === "rename") {
+      const n = await askText("Rename watchlist", { label: "Watchlist name", value: list.name, okText: "Rename" });
+      if (!n) return;
+      list.name = n;
+    }
     if (a === "dup") { const l = { ...structuredClone(list), id: uid(), name: list.name + " copy" }; this.lists.push(l); this.activeId = l.id; }
     if (a === "delete") {
-      if (this.lists.length === 1) return alert("You need at least one watchlist.");
-      if (!confirm(`Delete watchlist "${list.name}"?`)) return;
+      if (this.lists.length === 1) return toast("You need at least one watchlist.", "error");
+      if (!(await askConfirm("Delete watchlist", `Delete "${list.name}" and the ${list.items.filter((i) => i.t === "sym").length} symbols in it?`, { okText: "Delete", danger: true }))) return;
       this.lists = this.lists.filter((l) => l !== list);
       this.activeId = this.lists[0].id;
     }
-    if (a === "reset" && confirm("Add back the default India, US, Crypto, Forex and World lists?")) {
+    if (a === "reset" && await askConfirm("Restore default lists", "Add back the default India, US, Crypto, Forex & commodities and World indices watchlists? Your own lists are kept.", { okText: "Restore" })) {
       for (const d of DEFAULT_LISTS()) if (!this.lists.some((l) => l.name === d.name)) this.lists.push(d);
     }
     if (!a) return;
@@ -150,11 +155,11 @@ export class Watchlists {
       const r = e.target.closest(".wl-row");
       if (r) this.onSelect(r.dataset.sym);
     };
-    rows.ondblclick = (e) => {
+    rows.ondblclick = async (e) => {
       const s = e.target.closest(".wl-sec");
       if (!s) return;
       const it = this.active.items[+s.dataset.idx];
-      const t = prompt("Rename section:", it.title);
+      const t = await askText("Rename section", { label: "Section name", value: it.title, okText: "Rename" });
       if (t) { it.title = t.toUpperCase(); this.save(); this.renderRows(); }
     };
     let dragIdx = null;

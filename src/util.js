@@ -132,3 +132,49 @@ export function modal(title, html, { wide = false } = {}) {
   document.body.appendChild(bg);
   return { el: bg.querySelector(".modal-body"), close };
 }
+
+/**
+ * In-app replacement for prompt(): resolves to the trimmed text, or null if cancelled.
+ * Enter confirms, Esc or clicking outside cancels.
+ */
+export function askText(title, { label = "", value = "", placeholder = "", okText = "Save" } = {}) {
+  return new Promise((resolve) => {
+    const m = modal(title, `
+      <label class="field"><span>${esc(label)}</span><input class="ask-input" value="${esc(value)}" placeholder="${esc(placeholder)}" maxlength="80" /></label>
+      <div class="row-end"><button data-ask="cancel">Cancel</button><button class="primary" data-ask="ok">${esc(okText)}</button></div>`);
+    const input = m.el.querySelector(".ask-input");
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; m.close(); resolve(v); };
+    m.el.querySelector('[data-ask="ok"]').onclick = () => finish(input.value.trim() || null);
+    m.el.querySelector('[data-ask="cancel"]').onclick = () => finish(null);
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") finish(input.value.trim() || null);
+      if (e.key === "Escape") finish(null);
+      e.stopPropagation(); // keep chart shortcuts from firing while typing
+    };
+    watchClose(m, () => finish(null));
+    setTimeout(() => { input.focus(); input.select(); }, 0);
+  });
+}
+
+/** In-app replacement for confirm(): resolves true/false. `danger` styles the OK button red. */
+export function askConfirm(title, message, { okText = "OK", danger = false } = {}) {
+  return new Promise((resolve) => {
+    const m = modal(title, `<p class="ask-msg">${esc(message)}</p>
+      <div class="row-end"><button data-ask="cancel">Cancel</button><button class="primary ${danger ? "danger-solid" : ""}" data-ask="ok">${esc(okText)}</button></div>`);
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; m.close(); resolve(v); };
+    const ok = m.el.querySelector('[data-ask="ok"]');
+    ok.onclick = () => finish(true);
+    m.el.querySelector('[data-ask="cancel"]').onclick = () => finish(false);
+    m.el.closest(".modal").addEventListener("keydown", (e) => { if (e.key === "Escape") finish(false); if (e.key === "Enter") finish(true); e.stopPropagation(); });
+    watchClose(m, () => finish(false));
+    setTimeout(() => ok.focus(), 0);
+  });
+}
+
+/** Resolves a pending dialog when it's closed some other way (✕ button or clicking outside). */
+function watchClose(m, onClose) {
+  const bg = m.el.closest(".modal-bg");
+  new MutationObserver((_, obs) => { if (!bg.isConnected) { obs.disconnect(); onClose(); } }).observe(document.body, { childList: true });
+}

@@ -1,5 +1,5 @@
 // Stock screener view: market/exchange, presets, filter pills, sortable table, lazy performance columns.
-import { api, esc, store, bus, toast, fmtPx, fmtVol, signed, cls, currencySymbol, short } from "./util.js";
+import { api, esc, store, bus, toast, askText, fmtPx, fmtVol, signed, cls, currencySymbol, short } from "./util.js";
 
 // ---------------- number helpers ----------------
 
@@ -420,9 +420,9 @@ export class Screener {
     this.loadPerf(pageRows.map((r) => r.symbol));
   }
 
-  saveAsWatchlist(rows) {
+  async saveAsWatchlist(rows) {
     if (!rows.length) return;
-    const name = prompt("Name for the new watchlist:", `Screener — ${PRESETS.find((p) => p.id === this.state.preset)?.label || "custom"}`);
+    const name = await askText("Save as watchlist", { label: `Name for a new watchlist with ${Math.min(rows.length, 200)} symbols`, value: `Screener — ${PRESETS.find((p) => p.id === this.state.preset)?.label || "custom"}`, okText: "Save watchlist" });
     if (!name) return;
     bus.emit("create-watchlist", { name, symbols: rows.slice(0, 200).map((r) => r.symbol) });
     toast(`Saved ${Math.min(rows.length, 200)} symbols to “${name}”`, "ok");

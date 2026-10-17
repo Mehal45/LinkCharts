@@ -1,5 +1,5 @@
 // "Data sources & API keys" dialog: one card per provider, plus per-market source routing.
-import { api, esc, modal, toast, bus } from "./util.js";
+import { api, esc, modal, toast, bus, askConfirm } from "./util.js";
 
 export async function openSettings() {
   const m = modal("Data sources & API keys", `<div id="st-body" class="muted">Loading…</div>`, { wide: true });
@@ -70,7 +70,7 @@ export async function openSettings() {
             result.className = "test-result small up";
           } catch (err) { result.textContent = "✕ " + err.message; result.className = "test-result small down"; }
         }
-        if (act === "remove" && confirm("Remove this provider's saved keys?")) {
+        if (act === "remove" && await askConfirm("Remove keys", "Remove this provider's saved keys from this computer?", { okText: "Remove", danger: true })) {
           render(await api(`/api/providers/${id}`, { method: "DELETE" }));
           bus.emit("sources-changed");
         }

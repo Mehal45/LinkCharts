@@ -1,7 +1,7 @@
 // Paper trading with two separate virtual accounts: "live" (current prices) and "replay"
 // (prices from bar replay). Market/limit/stop orders, optional stop-loss & take-profit (OCO),
 // long and short positions, realized/unrealized P&L. Everything stays in this browser.
-import { store, uid, esc, short, fmtPx, fmtMoney, signed, cls, precisionFor, bus, toast, modal, fmtTime } from "./util.js";
+import { store, uid, esc, short, fmtPx, fmtMoney, signed, cls, precisionFor, bus, toast, modal, fmtTime, askConfirm } from "./util.js";
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const START = { INR: 1_000_000, USD: 100_000, EUR: 100_000, GBP: 100_000, JPY: 10_000_000 };
@@ -125,8 +125,8 @@ export class Trading {
     for (const o of this.acct.orders) if (o.symbol === symbol && o.status === "open" && o.oco) o.status = "cancelled";
   }
 
-  reset() {
-    if (!confirm(`Reset the ${this.mode} paper account? All positions, orders and history will be cleared.`)) return;
+  async reset() {
+    if (!(await askConfirm("Reset paper account", `Reset the ${this.mode} paper account? All positions, orders and history will be cleared.`, { okText: "Reset account", danger: true }))) return;
     this.accounts[this.mode] = freshAccount();
     this.save(); this.render(); this.drawLines();
   }
