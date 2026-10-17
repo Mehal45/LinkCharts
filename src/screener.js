@@ -53,6 +53,7 @@ const COLUMNS = [
   { id: "volume", label: "Volume", get: (r) => r.volume, fmt: (v, r) => fmtVol(v, r.currency) },
   { id: "relVol", label: "Rel vol", get: (r) => r.relVol, fmt: (v) => (v == null ? "—" : v.toFixed(2) + "×"), hot: (v) => v >= 2 },
   { id: "mcap", label: "Mkt cap", get: (r) => r.mcap, fmt: (v, r) => fmtMcap(v, r.currency) },
+  { id: "turnover", label: "Value traded", get: (r) => r.turnover, fmt: (v, r) => fmtMcap(v, r.currency) },
   { id: "pe", label: "P/E", get: (r) => r.pe, fmt: (v) => (v == null ? "—" : v.toFixed(1)) },
   { id: "eps", label: "EPS (TTM)", get: (r) => r.eps, fmt: (v) => (v == null ? "—" : v.toFixed(2)), off: true },
   { id: "pb", label: "P/B", get: (r) => r.pb, fmt: (v) => (v == null ? "—" : v.toFixed(2)), off: true },
@@ -62,12 +63,12 @@ const COLUMNS = [
   { id: "chg52w", label: "52W chg", get: (r) => r.chg52w, fmt: pct, color: true },
   { id: "vs50", label: "vs 50 MA", get: (r) => r.vs50, fmt: pct, color: true, off: true },
   { id: "vs200", label: "vs 200 MA", get: (r) => r.vs200, fmt: pct, color: true, off: true },
-  { id: "w1", label: "Perf 1W", get: (r) => r.perf?.w1, fmt: pct, color: true, perf: true },
-  { id: "m1", label: "Perf 1M", get: (r) => r.perf?.m1, fmt: pct, color: true, perf: true },
-  { id: "m3", label: "Perf 3M", get: (r) => r.perf?.m3, fmt: pct, color: true, perf: true, off: true },
-  { id: "m6", label: "Perf 6M", get: (r) => r.perf?.m6, fmt: pct, color: true, perf: true, off: true },
-  { id: "ytd", label: "Perf YTD", get: (r) => r.perf?.ytd, fmt: pct, color: true, perf: true },
-  { id: "y1", label: "Perf 1Y", get: (r) => r.perf?.y1, fmt: pct, color: true, perf: true, off: true },
+  { id: "w1", field: "perf.w1", label: "Perf 1W", get: (r) => r.perf?.w1, fmt: pct, color: true, perf: true },
+  { id: "m1", field: "perf.m1", label: "Perf 1M", get: (r) => r.perf?.m1, fmt: pct, color: true, perf: true },
+  { id: "m3", field: "perf.m3", label: "Perf 3M", get: (r) => r.perf?.m3, fmt: pct, color: true, perf: true, off: true },
+  { id: "m6", field: "perf.m6", label: "Perf 6M", get: (r) => r.perf?.m6, fmt: pct, color: true, perf: true, off: true },
+  { id: "ytd", field: "perf.ytd", label: "Perf YTD", get: (r) => r.perf?.ytd, fmt: pct, color: true, perf: true },
+  { id: "y1", field: "perf.y1", label: "Perf 1Y", get: (r) => r.perf?.y1, fmt: pct, color: true, perf: true, off: true },
   { id: "exchange", label: "Exchange", get: (r) => r.exchange, fmt: (v) => esc(v || ""), text: true, off: true },
   { id: "rating", label: "Analyst rating", get: (r) => r.rating, fmt: (v) => esc(v || "—"), text: true, off: true },
 ];
@@ -106,6 +107,7 @@ export class Screener {
       columns: saved.columns || COLUMNS.filter((c) => !c.off).map((c) => c.id),
       preset: saved.preset || "all",
       limit: saved.limit || 500,
+      universe: saved.universe || "nifty500",
       dedupe: saved.dedupe ?? true,
       page: 0,
     };
@@ -117,8 +119,8 @@ export class Screener {
   }
 
   save() {
-    const { market, exchanges, filters, sectors, sort, columns, preset, limit, dedupe } = this.state;
-    store.set("screener", { market, exchanges, filters, sectors, sort, columns, preset, limit, dedupe });
+    const { market, exchanges, filters, sectors, sort, columns, preset, limit, dedupe, universe } = this.state;
+    store.set("screener", { market, exchanges, filters, sectors, sort, columns, preset, limit, dedupe, universe });
   }
 
   async open() {
@@ -133,6 +135,13 @@ export class Screener {
   close() { this.el.hidden = true; }
 
   get market() { return this.meta.markets[this.state.market]; }
+
+  /** True if the loaded data has this field for at least one stock (e.g. India has no market cap or P/E). */
+  available(field) {
+    if (!this.data?.rows?.length || !field) return true;
+    if (field.startsWith("perf.")) return true;
+    return this.data.rows.some((r) => r[field] != null);
+  }
   get currency() { return this.market.currency; }
 
   // ---------------- data ----------------
@@ -154,20 +163,22 @@ export class Screener {
     this.state.page = 0;
     this.renderTable();
     try {
-      this.data = await api("/api/screener", { body: { market: this.state.market, exchanges: this.state.exchanges, filters: this.serverFilters(), limit: this.state.limit } });
+      const valid = this.state.exchanges.filter((e) => this.market.exchanges?.[e]);
+      this.data = await api("/api/screener", { body: { market: this.state.market, universe: this.state.universe, exchanges: valid, filters: this.serverFilters(), limit: this.state.limit } });
       this.error = null;
     } catch (e) {
       this.error = e.message;
       this.data = null;
     }
     this.loading = false;
-    this.renderTable();
+    this.render(); // re-draw presets/filters: some depend on which fields this market's data has
   }
 
   /** Rows after precise client-side filtering + sorting. */
   rows() {
     if (!this.data) return [];
-    let rows = this.data.rows.map((r) => ({ ...r, perf: this.perf.get(r.symbol) }));
+    let rows = this.data.rows.map((r) => ({ ...r, perf: r.perf ?? this.perf.get(r.symbol) }));
+    if (this.state.sectors.length) rows = rows.filter((r) => !r.sector || this.state.sectors.includes(r.sector));
     if (this.state.dedupe) {
       // A company listed on two exchanges (e.g. RELIANCE.NS and RELIANCE.BO): keep the primary listing.
       const primary = new Set(rows.filter((r) => /\.NS$/.test(r.symbol)).map((r) => r.symbol.replace(/\.NS$/, "")));
@@ -182,7 +193,8 @@ export class Screener {
         return (v.min == null || x >= v.min) && (v.max == null || x <= v.max);
       });
     }
-    const [key, dir] = this.state.sort;
+    let [key, dir] = this.state.sort;
+    if (key !== "symbol" && !this.available(COLUMNS.find((c) => c.id === key)?.field ?? key)) key = "turnover";
     const col = COLUMNS.find((c) => c.id === key);
     const get = key === "symbol" ? (r) => r.symbol : col ? col.get : (r) => r[key];
     const mul = dir === "asc" ? 1 : -1;
@@ -197,7 +209,8 @@ export class Screener {
   }
 
   async loadPerf(symbols) {
-    const missing = symbols.filter((s) => !this.perf.has(s));
+    const hasPerf = new Set((this.data?.rows || []).filter((r) => r.perf).map((r) => r.symbol));
+    const missing = symbols.filter((s) => !this.perf.has(s) && !hasPerf.has(s));
     if (!missing.length || !this.state.columns.some((id) => COLUMNS.find((c) => c.id === id)?.perf)) return;
     missing.forEach((s) => this.perf.set(s, null));
     try {
@@ -216,14 +229,16 @@ export class Screener {
       <div class="sc-top">
         <h2>Stock screener</h2>
         <select id="sc-market" title="Market">${Object.entries(this.meta.markets).map(([k, v]) => `<option value="${k}" ${k === this.state.market ? "selected" : ""}>${esc(v.label)}</option>`).join("")}</select>
-        <div class="sc-ex">${exchanges.map(([code, name]) => `<label><input type="checkbox" data-ex="${code}" ${!this.state.exchanges.length || this.state.exchanges.includes(code) ? "checked" : ""}/> ${esc(name)}</label>`).join("")}</div>
+        ${m.universes ? `<label class="small">Universe <select id="sc-universe">${Object.entries(m.universes).map(([k, l]) => `<option value="${k}" ${k === this.state.universe ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`
+          : `<div class="sc-ex">${exchanges.map(([code, name]) => `<label><input type="checkbox" data-ex="${code}" ${!this.state.exchanges.length || this.state.exchanges.includes(code) ? "checked" : ""}/> ${esc(name)}</label>`).join("")}</div>`}
         ${Object.keys(m.exchanges).length > 1 && this.state.market === "india" ? `<label class="small"><input type="checkbox" id="sc-dedupe" ${this.state.dedupe ? "checked" : ""}/> Hide BSE copies of NSE stocks</label>` : ""}
         <span class="spacer"></span>
-        <label class="muted small">Scan top <select id="sc-limit">${[250, 500, 1000, 1500].map((n) => `<option ${n === this.state.limit ? "selected" : ""}>${n}</option>`).join("")}</select> by market cap</label>
+        <span class="muted small" title="Where the data comes from">${esc(m.source || "")}</span>
+        <label class="muted small" ${m.universes ? "hidden" : ""}>Scan top <select id="sc-limit">${[250, 500, 1000, 1500].map((n) => `<option ${n === this.state.limit ? "selected" : ""}>${n}</option>`).join("")}</select> by market cap</label>
         <button id="sc-refresh" title="Refresh data">⟳ Refresh</button>
         <button class="icon" id="sc-close" title="Back to chart (Esc)">✕</button>
       </div>
-      <div class="sc-presets">${PRESETS.map((p) => `<button data-preset="${p.id}" class="${p.id === this.state.preset ? "on" : ""}">${esc(p.label)}</button>`).join("")}</div>
+      <div class="sc-presets">${PRESETS.map((p) => { const need = Object.keys(p.filters).find((k) => !this.available(FILTERS.find((f) => f.id === k)?.field)); return `<button data-preset="${p.id}" class="${p.id === this.state.preset ? "on" : ""}" ${need ? `disabled title="Not available for this market (no ${esc(FILTERS.find((f) => f.id === need).label)} data)"` : ""}>${esc(p.label)}</button>`; }).join("")}</div>
       <div class="sc-pills" id="sc-pills"></div>
       <div class="sc-bar" id="sc-bar"></div>
       <div class="sc-table-wrap" id="sc-wrap"></div>`;
@@ -244,7 +259,10 @@ export class Screener {
     $("#sc-limit").onchange = (e) => { this.state.limit = +e.target.value; this.save(); this.run(); };
     const dd = $("#sc-dedupe");
     if (dd) dd.onchange = () => { this.state.dedupe = dd.checked; this.save(); this.renderTable(); };
-    this.el.querySelector(".sc-ex").onchange = () => {
+    const uni = $("#sc-universe");
+    if (uni) uni.onchange = () => { this.state.universe = uni.value; this.save(); this.run(); };
+    const exBox = this.el.querySelector(".sc-ex");
+    if (exBox) exBox.onchange = () => {
       const all = [...this.el.querySelectorAll("[data-ex]")];
       const checked = all.filter((i) => i.checked).map((i) => i.dataset.ex);
       this.state.exchanges = checked.length === all.length ? [] : checked;
@@ -275,7 +293,7 @@ export class Screener {
       if (v.max != null) return `≤ ${show(v.max)}`;
       return "";
     };
-    box.innerHTML = FILTERS.map((f) => {
+    box.innerHTML = FILTERS.filter((f) => f.kind !== "range" || this.available(f.field)).map((f) => {
       const val = valueText(f);
       return `<div class="pill-wrap"><button class="fpill ${val ? "set" : ""}" data-pill="${f.id}">${esc(f.label)}${val ? `: <b>${esc(val)}</b>` : " ▾"}</button>
         ${this.openPill === f.id ? this.pillEditor(f) : ""}</div>`;
@@ -291,7 +309,7 @@ export class Screener {
 
   pillEditor(f) {
     if (f.kind === "sector") {
-      return `<div class="pill-pop"><div class="sector-list">${this.meta.sectors.map((s) => `<label><input type="checkbox" data-sector="${esc(s)}" ${this.state.sectors.includes(s) ? "checked" : ""}/> ${esc(s)}</label>`).join("")}</div>
+      return `<div class="pill-pop"><div class="sector-list">${(this.data?.sectors || this.meta.sectors).map((s) => `<label><input type="checkbox" data-sector="${esc(s)}" ${this.state.sectors.includes(s) ? "checked" : ""}/> ${esc(s)}</label>`).join("")}</div>
         <div class="row-end"><button data-pop="clear">Clear</button><button class="primary" data-pop="apply">Apply</button></div></div>`;
     }
     const v = this.state.filters[f.id] || {};
@@ -321,7 +339,8 @@ export class Screener {
       this.save();
       this.render();
       // Filters Yahoo can apply narrow the universe → refetch; the rest are instant client-side.
-      if (f.server || f.kind === "sector") this.run();
+      if (this.state.market !== "india" && (f.server || f.kind === "sector")) this.run();
+      else this.renderTable();
     };
     pop.onclick = (e) => { const a = e.target.dataset.pop; if (a === "apply") apply(false); if (a === "clear") apply(true); };
     pop.onkeydown = (e) => { if (e.key === "Enter") apply(false); if (e.key === "Escape") { this.openPill = null; this.renderPills(); } };
@@ -332,18 +351,20 @@ export class Screener {
     const wrap = this.el.querySelector("#sc-wrap");
     const bar = this.el.querySelector("#sc-bar");
     if (!wrap) return;
-    if (this.loading) { bar.innerHTML = `<span class="muted">Scanning…</span>`; wrap.innerHTML = `<div class="empty-note">Loading screener data…</div>`; return; }
+    if (this.loading) { bar.innerHTML = `<span class="muted">Scanning…</span>`; wrap.innerHTML = `<div class="empty-note">Scanning stocks… the first scan downloads a year of prices for each stock (about 5–20 seconds), then it is cached for a few minutes.</div>`; return; }
     if (this.error) { bar.innerHTML = ""; wrap.innerHTML = `<div class="error-note">${esc(this.error)}</div>`; return; }
     if (!this.data) return;
     const rows = this.rows();
     const pages = Math.max(1, Math.ceil(rows.length / PAGE));
     this.state.page = Math.min(this.state.page, pages - 1);
     const pageRows = rows.slice(this.state.page * PAGE, (this.state.page + 1) * PAGE);
-    const cols = this.state.columns.map((id) => COLUMNS.find((c) => c.id === id)).filter(Boolean);
+    const cols = this.state.columns.map((id) => COLUMNS.find((c) => c.id === id)).filter((c) => c && this.available(c.field ?? c.id));
+    // Where there is no market cap (India), show value traded instead so the default sort is visible.
+    if (!this.available("mcap") && !cols.some((c) => c.id === "turnover")) cols.splice(Math.min(5, cols.length), 0, COLUMNS.find((c) => c.id === "turnover"));
     const [sk, sd] = this.state.sort;
     const arrow = (id) => (sk === id ? (sd === "desc" ? " ▼" : " ▲") : "");
     bar.innerHTML = `
-      <span><b>${rows.length.toLocaleString()}</b> match${rows.length === 1 ? "" : "es"} <span class="muted">· scanned ${this.data.returned.toLocaleString()} largest of ${this.data.total.toLocaleString()} stocks</span></span>
+      <span><b>${rows.length.toLocaleString()}</b> match${rows.length === 1 ? "" : "es"} <span class="muted">· ${esc(this.data.universe || `scanned ${this.data.returned.toLocaleString()} largest of ${this.data.total.toLocaleString()} stocks`)}</span></span>
       <span class="spacer"></span>
       <div class="menu"><button id="sc-cols">☷ Columns</button><div class="menu-pop right" id="sc-cols-pop" hidden>
         ${COLUMNS.map((c) => `<label class="col-opt"><input type="checkbox" data-col="${c.id}" ${this.state.columns.includes(c.id) ? "checked" : ""}/> ${esc(c.label)}${c.perf ? ' <span class="muted small">(loads per page)</span>' : ""}</label>`).join("")}

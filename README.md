@@ -130,16 +130,19 @@ A theme picker with live thumbnails appears when you open LinkCharts. Untick "Sh
 
 Click **🔍 Screener** in the header. Esc goes back to the chart.
 
-- **Markets:** India (NSE, BSE), United States (NASDAQ, NYSE, NYSE American), UK, Germany, Japan, Hong Kong, Canada and Australia. Tick or untick individual exchanges.
-- **Ready-made screens:** top gainers, top losers, most active, unusual volume, near 52-week high, near 52-week low, large caps, low P/E, high dividend, and above the 50- and 200-day moving averages.
+- **Markets and data sources:**
+  - **India:** NSE's official index lists (NIFTY 50, 100, 200, 500, Midcap 150, Smallcap 250, Microcap 250, Total Market 750). Pick one under *Universe*. Industry is used as the sector. There's no market cap, P/E or dividend data, so India sorts by *Value traded* and hides those filters.
+  - **United States:** every NASDAQ, NYSE and NYSE American stock from Nasdaq's public screener, with price, change, volume, market cap and sector. The largest N by market cap (250–1,500) get the full set of figures.
+  - **UK, Germany, Japan, Hong Kong, Canada, Australia:** these still use Yahoo's screener, which currently refuses sessions from apps like this. The screener shows a message when it's unavailable.
+  - **How the figures are made:** relative volume, 52-week range, moving-average distance and 1W–1Y returns are calculated from a year of daily prices for each stock. The first scan takes about 5–20 seconds, then results are cached for a few minutes.
+- **Ready-made screens:** top gainers, top losers, most active, unusual volume, near 52-week high, near 52-week low, large caps, low P/E, high dividend, and above the 50- and 200-day moving averages. Screens that need data a market doesn't have are greyed out.
 - **Filters:**
   - price, change %, volume, relative volume, market cap, P/E, dividend yield, sector;
   - % from the 52-week high, % above the 52-week low, 52-week change;
   - distance from the 50- and 200-day moving averages.
   - Amounts accept shortcuts like `10L`, `5Cr`, `2M` or `10B`.
-- **Columns:** click any header to sort, and use ☷ Columns to show or hide them, including 1W, 1M, 3M, 6M, YTD and 1Y returns (loaded for the page you're viewing).
+- **Columns:** click any header to sort, and use ☷ Columns to show or hide them.
 - **Actions:** click a row to open its chart, use ＋ to add it to the current watchlist, or **☆ Save as watchlist** to save all the results.
-- **How it gets data:** the screener fetches up to 1,500 of the largest matching companies from Yahoo, then filters and sorts them precisely in your browser. In India, BSE copies of NSE stocks are hidden by default.
 
 ## Shortcuts
 
@@ -164,7 +167,7 @@ Click **🔍 Screener** in the header. Esc goes back to the chart.
 | `src/chart.js` | Price chart, volume, indicator overlays and panes, legend, coordinate helpers |
 | `src/drawings.js` | Drawing tools (a Lightweight Charts series primitive) |
 | `src/indicators.js` | Indicator maths and registry |
-| `screener.mjs` · `src/screener.js` | Screener backend (Yahoo screener + performance) and UI |
+| `screener.mjs` · `screener-sources.mjs` · `src/screener.js` | Screener: market routing, NSE/Nasdaq sources with Yahoo price history, and the UI |
 | `src/themes.js` | Theme definitions (UI variables + chart palette) and the theme picker |
 | `src/watchlists.js` · `src/alerts.js` · `src/trading.js` · `src/replay.js` · `src/details.js` · `src/settings.js` | Panels |
 

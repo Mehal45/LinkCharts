@@ -2,12 +2,14 @@
 // Yahoo pre-filters a market by exchange/sector/price/volume/market cap; the app then
 // filters and sorts precisely on the client (Yahoo ignores some sort fields).
 import { yahoo } from "./providers.mjs";
+import { screenIndia, screenUS, INDIA_UNIVERSES, US_EXCHANGES } from "./screener-sources.mjs";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0 Safari/537.36";
 
 export const SCREENER_MARKETS = {
-  india: { label: "India", region: "IN", exchanges: { NSI: "NSE", BSE: "BSE" }, currency: "INR" },
-  us: { label: "United States", region: "US", exchanges: { NMS: "NASDAQ GS", NGM: "NASDAQ GM", NCM: "NASDAQ CM", NYQ: "NYSE", ASE: "NYSE American" }, currency: "USD" },
+  // India and the US use dedicated sources (NSE index lists, Nasdaq screener) — see screener-sources.mjs.
+  india: { label: "India", region: "IN", exchanges: {}, universes: Object.fromEntries(Object.entries(INDIA_UNIVERSES).map(([k, [label]]) => [k, label])), currency: "INR", source: "NSE index lists + Yahoo prices" },
+  us: { label: "United States", region: "US", exchanges: US_EXCHANGES, currency: "USD", source: "Nasdaq screener + Yahoo history" },
   uk: { label: "United Kingdom", region: "GB", exchanges: { LSE: "London" }, currency: "GBP" },
   germany: { label: "Germany", region: "DE", exchanges: { GER: "XETRA", FRA: "Frankfurt" }, currency: "EUR" },
   japan: { label: "Japan", region: "JP", exchanges: { JPX: "Tokyo" }, currency: "JPY" },
@@ -26,7 +28,7 @@ async function getSession(force = false) {
   const cookie = (r1.headers.getSetCookie?.() || []).map((c) => c.split(";")[0]).join("; ");
   const r2 = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", { headers: { "User-Agent": UA, Cookie: cookie } });
   const crumb = (await r2.text()).trim();
-  if (!crumb || crumb.includes("<") || crumb.length > 40) throw Object.assign(new Error("Couldn't start a Yahoo session for the screener"), { status: 502 });
+  if (!crumb || crumb.includes("<") || crumb.includes("{") || crumb.length > 40) throw Object.assign(new Error("Couldn't start a Yahoo session for the screener"), { status: 502 });
   session = { cookie, crumb, at: Date.now() };
   return session;
 }
@@ -95,8 +97,23 @@ export async function runScreen(req) {
   const key = JSON.stringify({ ...req, limit });
   const hit = screenCache.get(key);
   if (hit && Date.now() - hit.at < 60_000) return hit.value;
+  let value;
+  if (req.market === "india") value = await screenIndia({ universe: req.universe });
+  else if (req.market === "us") value = await screenUS({ exchanges: req.exchanges, filters: req.filters, limit });
+  else value = await yahooMarketScreen(req, limit);
+  screenCache.set(key, { at: Date.now(), value });
+  if (screenCache.size > 50) screenCache.delete(screenCache.keys().next().value);
+  return value;
+}
+
+/** Other markets: Yahoo's screener, which needs a Yahoo session that Yahoo may refuse. */
+async function yahooMarketScreen(req, limit) {
   const { market, query } = buildQuery(req);
-  const first = await yahooScreen(market.region, query, 0, 250);
+  let first;
+  try { first = await yahooScreen(market.region, query, 0, 250); } catch { first = null; }
+  if (!first || !first.total) {
+    throw Object.assign(new Error(`Screening ${market.label} relies on Yahoo's screener, which isn't answering right now (Yahoo has started refusing sessions from apps like this). India and United States screening use other sources and still work.`), { status: 503 });
+  }
   const pages = [first];
   const want = Math.min(limit, first.total);
   const offsets = [];
@@ -106,10 +123,7 @@ export async function runScreen(req) {
   }
   const seen = new Set();
   const rows = pages.flatMap((p) => p.quotes || []).filter((q) => q.regularMarketPrice != null && !seen.has(q.symbol) && seen.add(q.symbol)).slice(0, limit).map(compact);
-  const value = { total: first.total, returned: rows.length, currency: market.currency, rows, at: Math.floor(Date.now() / 1000) };
-  screenCache.set(key, { at: Date.now(), value });
-  if (screenCache.size > 50) screenCache.delete(screenCache.keys().next().value);
-  return value;
+  return { total: first.total, returned: rows.length, currency: market.currency, rows, at: Math.floor(Date.now() / 1000), sectors: SECTORS };
 }
 
 // ---------------- performance (1W/1M/3M/6M/YTD/1Y) from daily candles ----------------

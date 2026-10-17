@@ -161,7 +161,7 @@ async function handleApi(req, url) {
       .filter((x) => x.symbol && ["EQUITY", "ETF", "INDEX", "CRYPTOCURRENCY", "CURRENCY", "FUTURE", "MUTUALFUND"].includes(x.quoteType))
       .map((x) => ({ symbol: x.symbol, name: x.longname || x.shortname || x.symbol, exchange: x.exchDisp, type: x.typeDisp || x.quoteType, market: marketOf(x.symbol) }));
   }
-  if (p === "/api/screener/meta") return { markets: Object.fromEntries(Object.entries(SCREENER_MARKETS).map(([k, m]) => [k, { label: m.label, exchanges: m.exchanges, currency: m.currency }])), sectors: SECTORS };
+  if (p === "/api/screener/meta") return { markets: Object.fromEntries(Object.entries(SCREENER_MARKETS).map(([k, m]) => [k, { label: m.label, exchanges: m.exchanges, universes: m.universes || null, currency: m.currency, source: m.source || "Yahoo screener" }])), sectors: SECTORS };
   if (p === "/api/screener" && req.method === "POST") return runScreen(await readBody(req));
   if (p === "/api/perf") {
     const symbols = (url.searchParams.get("symbols") || "").split(",").filter((s) => SYMBOL_RE.test(s));
