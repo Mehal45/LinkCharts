@@ -585,8 +585,11 @@ document.addEventListener("keydown", (e) => {
 
 // ---------------- boot ----------------
 
-// Theme picker greets people when the site opens (they can turn this off inside the picker).
-if (store.get("theme-popup", true)) setTimeout(() => openThemePicker({ startup: true }), 400);
+// Theme picker greets first-time visitors only; afterwards it opens from the 🎨 button.
+if (!store.get("theme-seen", false)) {
+  store.set("theme-seen", true);
+  setTimeout(() => openThemePicker({ startup: true }), 400);
+}
 renderSidebar();
 setLayout(state.layout);
 setInterval(loadQuotes, 15000);

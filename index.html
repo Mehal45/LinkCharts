@@ -28,6 +28,8 @@
     button.icon:hover { background: var(--panel2); }
     button.small { padding: 2px 8px; font-size: 12px; }
     input, select { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; outline: none; }
+    /* Native dropdown lists: always the theme's colours (otherwise some browsers show light text on a white list) */
+    select option, select optgroup { background-color: var(--menu-bg, var(--panel)); color: var(--text); }
     input:focus, select:focus { border-color: var(--accent); }
     code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
     .up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--muted); } .small { font-size: 11.5px; }
@@ -137,7 +139,7 @@
     .side-panel { height: 100%; display: grid; grid-template-rows: auto auto 1fr; min-height: 0; overflow: hidden; }
     #alertsPanel { display: block; overflow: auto; }
     .wl-head { display: flex; align-items: center; gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
-    .wl-select { flex: 1; min-width: 0; font-weight: 600; background: none; border-color: transparent; padding: 4px; }
+    .wl-select { flex: 1; min-width: 0; font-weight: 600; background: var(--menu-bg, var(--panel)); color: var(--text); border-color: transparent; padding: 4px; }
     .wl-cols, .wl-row { display: grid; grid-template-columns: minmax(70px, 1fr) 72px 54px 56px 12px; gap: 4px; align-items: center; padding: 0 8px; }
     .wl-cols { color: var(--muted); font-size: 11px; padding-top: 4px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
     .wl-cols span:not(:first-child), .wl-row span:not(:first-child) { text-align: right; }

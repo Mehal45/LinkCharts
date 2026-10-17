@@ -26,7 +26,7 @@ export const THEMES = [
   {
     id: "glass", name: "Glossy Glass", group: "Style", bodyClass: "theme-glass",
     tagline: "Frosted glass panels floating over a slow-moving aurora gradient.",
-    vars: { ...base, "--bg": "#0b1020", "--panel": "rgba(255,255,255,0.07)", "--panel2": "rgba(255,255,255,0.10)", "--panel3": "rgba(255,255,255,0.16)", "--line": "rgba(255,255,255,0.14)", "--text": "#f2f5ff", "--muted": "#aab3d0", "--up": "#3ee0b5", "--down": "#ff6b8b", "--accent": "#7c5cff", "--accent2": "#a99bff", "--radius": "12px", "--on-up": "#04221a" },
+    vars: { ...base, "--bg": "#0b1020", "--panel": "rgba(255,255,255,0.07)", "--panel2": "rgba(255,255,255,0.10)", "--panel3": "rgba(255,255,255,0.16)", "--line": "rgba(255,255,255,0.14)", "--text": "#f2f5ff", "--muted": "#aab3d0", "--up": "#3ee0b5", "--down": "#ff6b8b", "--accent": "#7c5cff", "--accent2": "#a99bff", "--radius": "12px", "--on-up": "#04221a", "--menu-bg": "#1a1d42" }, // menus need a solid colour
     chart: { bg: "rgba(0,0,0,0)", text: "#c8cfea", grid: "rgba(255,255,255,0.06)", up: "#3ee0b5", down: "#ff6b8b", line: "#a99bff", crosshair: "#c8cfea" },
   },
   {
@@ -88,6 +88,8 @@ export const currentTheme = () => byId(store.get("theme", "midnight"));
 export function applyTheme(id) {
   const t = byId(id);
   const root = document.documentElement;
+  // Clear variables set by the previous theme that this one doesn't define (e.g. Glass's --menu-bg).
+  for (const k of new Set(THEMES.flatMap((x) => Object.keys(x.vars)))) if (!(k in t.vars)) root.style.removeProperty(k);
   for (const [k, v] of Object.entries(t.vars)) root.style.setProperty(k, v);
   document.body.classList.remove(...THEMES.map((x) => x.bodyClass).filter(Boolean));
   if (t.bodyClass) document.body.classList.add(t.bodyClass);
@@ -141,7 +143,6 @@ export function openThemePicker({ startup = false } = {}) {
           <div class="muted small th-tag">${esc(t.tagline)}</div>
         </button>`).join("")}</div>`).join("")}
     <div class="row-end th-foot">
-      <label class="small"><input type="checkbox" id="th-startup" ${store.get("theme-popup", true) ? "checked" : ""}/> Show this when LinkCharts opens</label>
       <span class="spacer"></span>
       <button class="primary" data-close-picker>${startup ? "Start charting" : "Done"}</button>
     </div>`, { wide: true });
@@ -153,6 +154,5 @@ export function openThemePicker({ startup = false } = {}) {
     if (card) { applyTheme(card.dataset.themeId); mark(); return; }
     if (e.target.closest("[data-close-picker]")) m.close();
   });
-  m.el.querySelector("#th-startup").onchange = (e) => store.set("theme-popup", e.target.checked);
   return m;
 }

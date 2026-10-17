@@ -113,7 +113,7 @@ Click **⊞ Layout** above the chart to show several charts side by side. There 
 
 ## Themes
 
-A theme picker with live thumbnails appears when you open LinkCharts. Untick "Show this when LinkCharts opens" to stop it, and reopen it any time with **🎨 Theme** in the top bar. Every theme restyles the whole interface and the chart itself: background, grid, candle, volume and indicator colours.
+A theme picker with live thumbnails appears the first time someone opens LinkCharts. After that, reopen it any time with **🎨 Theme** in the top bar. Every theme restyles the whole interface and the chart itself: background, grid, candle, volume and indicator colours.
 
 | Group | Themes |
 |---|---|
