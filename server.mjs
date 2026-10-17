@@ -11,6 +11,18 @@ import { runScreen, performance, SCREENER_MARKETS, SECTORS } from "./screener.mj
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.argv[2] || 5174);
 const configPath = path.join(root, "data", "config.json");
+// Everything the app remembers (watchlists, alerts, drawings, paper trades, layouts, theme…)
+// is mirrored here so it survives cleared browser data or a different browser.
+const userDataPath = path.join(root, "data", "userdata.json");
+function readUserData() {
+  try { return JSON.parse(fs.readFileSync(userDataPath, "utf8")); } catch { return { savedAt: 0, items: {} }; }
+}
+function writeUserData(data) {
+  fs.mkdirSync(path.dirname(userDataPath), { recursive: true });
+  const tmp = userDataPath + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(data));
+  fs.renameSync(tmp, userDataPath); // atomic: a crash mid-write never leaves a half-written file
+}
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" };
 const SYMBOL_RE = /^[\^A-Z0-9&.\-=]{1,30}$/i;
 
@@ -131,9 +143,9 @@ function providersView() {
   };
 }
 
-async function readBody(req) {
+async function readBody(req, maxChars = 20_000) {
   let s = "";
-  for await (const chunk of req) { s += chunk; if (s.length > 20_000) throw new ProviderError("Body too large", 413); }
+  for await (const chunk of req) { s += chunk; if (s.length > maxChars) throw new ProviderError("Body too large", 413); }
   return s ? JSON.parse(s) : {};
 }
 
@@ -166,6 +178,14 @@ async function handleApi(req, url) {
   if (p === "/api/perf") {
     const symbols = (url.searchParams.get("symbols") || "").split(",").filter((s) => SYMBOL_RE.test(s));
     return performance(symbols);
+  }
+  if (p === "/api/userdata" && req.method === "GET") return readUserData();
+  if (p === "/api/userdata" && req.method === "POST") {
+    const body = await readBody(req, 20_000_000);
+    if (!body || typeof body.items !== "object" || !Number.isFinite(body.savedAt)) throw new ProviderError("Bad user data", 400);
+    const items = Object.fromEntries(Object.entries(body.items).filter(([k, v]) => k.startsWith("bz:") && typeof v === "string"));
+    writeUserData({ savedAt: body.savedAt, items });
+    return { ok: true, keys: Object.keys(items).length, path: "data/userdata.json" };
   }
   if (p === "/api/providers" && req.method === "GET") return providersView();
   if (p === "/api/routing" && req.method === "POST") {

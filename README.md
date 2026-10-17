@@ -144,6 +144,16 @@ Click **🔍 Screener** in the header. Esc goes back to the chart.
 - **Columns:** click any header to sort, and use ☷ Columns to show or hide them.
 - **Actions:** click a row to open its chart, use ＋ to add it to the current watchlist, or **☆ Save as watchlist** to save all the results.
 
+## Your data is saved on your PC
+
+Everything you set up is saved automatically to **`market-app/data/userdata.json`** on your computer. That includes watchlists, alerts, drawings, paper-trading account and history, chart layouts, indicators, theme and screener settings.
+
+- **Survives everything:** reloading, restarting the server or PC, clearing browser data, private windows, and switching browsers.
+- **Speed:** the browser keeps a copy so it opens instantly. Changes are written to the file within a second, and the last ones are flushed when you close the tab.
+- **Back up or move:** copy `data/userdata.json` (and `data/config.json` for API keys) to another LinkCharts folder.
+- **Start fresh:** stop the server and delete `data/userdata.json`, then clear the site's data in your browser.
+- **Private:** the `data/` folder is in `.gitignore`, so your data and keys are never uploaded to GitHub.
+
 ## Shortcuts
 
 | Keys | Action |
@@ -160,7 +170,8 @@ Click **🔍 Screener** in the header. Esc goes back to the chart.
 
 | File | Role |
 |---|---|
-| `server.mjs` | API, caching, key storage (`data/config.json`), per-market source routing |
+| `server.mjs` | API, caching, key storage (`data/config.json`), saved user data (`data/userdata.json`), per-market source routing |
+| `src/boot.js` | Startup: loads saved data from disk before the app starts |
 | `providers.mjs` | Provider registry, Yahoo, Binance, Fyers, Twelve Data, Polygon |
 | `providers-extra.mjs` | Coinbase, Kraken, Upstox, CoinGecko, Kite, Alpaca, Tiingo, FMP, EODHD, Marketstack, Alpha Vantage, Tradier + shared time-zone/resampling helpers |
 | `src/app.js` | Wiring: toolbar, loading, live updates, quotes, search, shortcuts |

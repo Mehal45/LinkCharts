@@ -21,9 +21,52 @@ export const store = {
     try { const v = localStorage.getItem("bz:" + key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; }
   },
   set(key, value) {
-    try { localStorage.setItem("bz:" + key, JSON.stringify(value)); } catch { /* not persisted */ }
+    try {
+      localStorage.setItem("bz:" + key, JSON.stringify(value));
+      localStorage.setItem(SAVED_AT, String(Date.now()));
+    } catch { /* not persisted in the browser; the disk copy below still runs */ }
+    scheduleDiskSave();
   },
 };
+
+// ---------------- saving to disk ----------------
+// The browser copy is a fast cache; the real copy lives in market-app/data/userdata.json on this PC,
+// so data survives cleared browser data, private windows and switching browsers.
+
+export const SAVED_AT = "bz:__savedAt";
+let saveTimer = null;
+
+/** All of LinkCharts' saved keys as { "bz:key": "json" }. */
+export function snapshot() {
+  const items = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k.startsWith("bz:") && k !== SAVED_AT) items[k] = localStorage.getItem(k);
+    }
+  } catch { /* storage unavailable */ }
+  return { savedAt: +(localStorage.getItem(SAVED_AT) || Date.now()), items };
+}
+
+function scheduleDiskSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveToDisk, 800); // batch bursts of changes (e.g. dragging a drawing)
+}
+
+export async function saveToDisk() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  try {
+    await fetch("/api/userdata", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot()) });
+  } catch { /* server not reachable right now; the next change will try again */ }
+}
+
+// Don't lose the last second of changes when the tab closes.
+addEventListener("pagehide", () => {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  navigator.sendBeacon?.("/api/userdata", new Blob([JSON.stringify(snapshot())], { type: "application/json" }));
+});
 
 /** Tiny pub/sub used to decouple panels from the chart. */
 const handlers = {};
