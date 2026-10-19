@@ -10,16 +10,18 @@ import { PROVIDERS, MARKETS, INTERVALS, marketOf, yahoo, ProviderError } from ".
 import { runScreen, performance, SCREENER_MARKETS, SECTORS } from "./screener.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const port = Number(process.argv.slice(2).find((a) => /^\d+$/.test(a)) || 5174);
+const port = Number(process.env.LINKCHARTS_PORT || process.argv.slice(2).find((a) => /^\d+$/.test(a)) || 5174);
+// The installed app keeps its data in the user's app-data folder (the install folder is replaced on updates).
+const dataDir = process.env.LINKCHARTS_DATA || path.join(root, "data");
 const openBrowser = process.argv.includes("--open");
 function launchBrowser(url) {
   const cmd = process.platform === "win32" ? `start "" "${url}"` : process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;
   exec(cmd, () => { /* no browser to launch; the URL is printed above */ });
 }
-const configPath = path.join(root, "data", "config.json");
+const configPath = path.join(dataDir, "config.json");
 // Everything the app remembers (watchlists, alerts, drawings, paper trades, layouts, theme…)
 // is mirrored here so it survives cleared browser data or a different browser.
-const userDataPath = path.join(root, "data", "userdata.json");
+const userDataPath = path.join(dataDir, "userdata.json");
 function readUserData() {
   try { return JSON.parse(fs.readFileSync(userDataPath, "utf8")); } catch { return { savedAt: 0, items: {} }; }
 }

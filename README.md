@@ -13,6 +13,16 @@ No account or API key is needed to start. It uses free data out of the box, and 
 
 ## Installation
 
+### Windows: download the installer (easiest)
+
+1. Go to the **[latest release](https://github.com/Mehal45/LinkCharts/releases/latest)** and download **`LinkCharts-Setup-….exe`**.
+2. Open it. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway** (the installer isn't code-signed yet).
+3. Click **Next** through the installer. LinkCharts opens in its own window, with shortcuts on the desktop and in the Start menu.
+
+No Node.js, browser or black window needed. Updates: download and run the newer installer; your data stays.
+
+### Mac, Linux, or running from the source
+
 It takes about 5 minutes. No account, API key or coding is needed.
 
 ### Step 1: Install Node.js (one time only)
@@ -185,7 +195,7 @@ Click **🔍 Screener** in the header. Esc goes back to the chart.
 
 ## Your data is saved on your PC
 
-Everything you set up is saved automatically to **`market-app/data/userdata.json`** on your computer. That includes watchlists, alerts, drawings, paper-trading account and history, chart layouts, indicators, theme and screener settings.
+Everything you set up is saved automatically to **`data/userdata.json`** on your computer (in the Windows app: **`%APPDATA%\LinkCharts\data\`**, so it survives updates and reinstalls). That includes watchlists, alerts, drawings, paper-trading account and history, chart layouts, indicators, theme and screener settings.
 
 - **Survives everything:** reloading, restarting the server or PC, clearing browser data, private windows, and switching browsers.
 - **Speed:** the browser keeps a copy so it opens instantly. Changes are written to the file within a second, and the last ones are flushed when you close the tab.
@@ -210,6 +220,7 @@ Everything you set up is saved automatically to **`market-app/data/userdata.json
 | File | Role |
 |---|---|
 | `Start LinkCharts.bat` · `Start LinkCharts.command` | Double-click launchers for Windows and Mac |
+| `desktop/main.cjs` | Windows app: runs the server inside the app and shows it in its own window (`npm run app` to try it, `npm run dist:win` to build the installer) |
 | `server.mjs` | API, caching, key storage (`data/config.json`), saved user data (`data/userdata.json`), per-market source routing |
 | `src/boot.js` | Startup: loads saved data from disk before the app starts |
 | `providers.mjs` | Provider registry, Yahoo, Binance, Fyers, Twelve Data, Polygon |

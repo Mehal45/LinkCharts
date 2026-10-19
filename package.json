@@ -1,15 +1,63 @@
 {
   "name": "linkcharts",
-  "version": "1.0.0",
+  "productName": "LinkCharts",
+  "version": "1.1.0",
   "description": "Free TradingView-style charting for global markets: drawing tools, 20+ indicators, screener, watchlists, alerts, bar replay and paper trading.",
+  "author": "Mehal45",
+  "homepage": "https://github.com/Mehal45/LinkCharts",
+  "license": "MIT",
+  "private": true,
   "type": "module",
+  "main": "desktop/main.cjs",
   "scripts": {
     "start": "node server.mjs --open",
-    "serve": "node server.mjs"
+    "serve": "node server.mjs",
+    "app": "electron .",
+    "dist:win": "electron-builder --win --publish never"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT",
-  "private": true
+  "devDependencies": {
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "io.github.mehal45.linkcharts",
+    "productName": "LinkCharts",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "index.html",
+      "src/**/*",
+      "*.mjs",
+      "desktop/**/*",
+      "build/icon.png",
+      "package.json",
+      "LICENSE"
+    ],
+    "artifactName": "LinkCharts-${version}-${os}-${arch}.${ext}",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LinkCharts",
+      "artifactName": "LinkCharts-Setup-${version}.${ext}"
+    }
+  }
 }
