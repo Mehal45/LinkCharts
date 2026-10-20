@@ -18,8 +18,8 @@ export async function openSettings() {
           <div class="prov-head"><b>${esc(p.name)}</b>${status(p)}</div>
           <div class="muted small">${esc(p.note)}</div>
           <div class="small">Markets: ${markets(p)}</div>
-          ${p.fields.map((f) => `<label class="field"><span>${esc(f.label)}</span>
-            <input name="${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : ""} placeholder="${esc(f.placeholder || "")}" value="${esc(f.value)}" /></label>`).join("")}
+          ${p.fields.map((f) => `<label class="field"><span>${esc(f.label)}${f.fromEnv ? ` <i class="muted">(from ${esc(f.env)})</i>` : ""}</span>
+            <input name="${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : ""} ${f.fromEnv ? "disabled" : ""} placeholder="${esc(f.placeholder || "")}" value="${esc(f.value)}" /></label>`).join("")}
           <div class="row-end"><span class="test-result small"></span>
             ${p.configured ? `${optionalOnly(p) ? "" : `<button type="button" data-act="remove" class="danger">Remove</button>`}<button type="button" data-act="test">Test</button>` : ""}
             <button type="submit" class="primary">Save</button></div>

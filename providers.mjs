@@ -5,6 +5,7 @@
 // BTC-USD (crypto), EURUSD=X (forex), GC=F (futures).
 
 import { EXTRA_PROVIDERS } from "./providers-extra.mjs";
+import { local } from "./providers-local.mjs";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0 Safari/537.36";
 
@@ -59,7 +60,8 @@ export async function getText(url, opts = {}) {
 
 // ---------------- Yahoo (free, global, no key) ----------------
 
-const YAHOO_RANGE = { "1m": "5d", "5m": "1mo", "15m": "1mo", "30m": "1mo", "60m": "6mo", "1d": "2y", "1wk": "10y", "1mo": "max" };
+// Yahoo's limits: 1m bars for the last ~8 days, 5m–30m for 60 days, 60m for 730 days.
+const YAHOO_RANGE = { "1m": "5d", "5m": "60d", "15m": "60d", "30m": "60d", "60m": "2y", "1d": "5y", "1wk": "10y", "1mo": "max" };
 
 export function normalizeYahoo(json) {
   const r = json?.chart?.result?.[0];
@@ -220,7 +222,7 @@ export const polygon = {
 
 // Order here is the order shown in Settings: free built-ins first, then Indian brokers, then global APIs.
 export const PROVIDERS = {
-  yahoo, binance, ...pick(EXTRA_PROVIDERS, "coinbase", "kraken", "upstox", "coingecko"),
+  yahoo, binance, local, ...pick(EXTRA_PROVIDERS, "coinbase", "kraken", "upstox", "coingecko"),
   fyers, ...pick(EXTRA_PROVIDERS, "kite"),
   twelvedata, polygon, ...pick(EXTRA_PROVIDERS, "alpaca", "tiingo", "fmp", "eodhd", "marketstack", "alphavantage", "tradier"),
 };

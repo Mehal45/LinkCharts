@@ -66,7 +66,7 @@ The server only listens on your own computer (127.0.0.1), because it can store y
 
 ## Data sources
 
-17 sources: 6 work with no key, and 11 use your own account or API key. Add keys in **⚙ → Data sources & API keys**. Each provider has its own fields (some need two values, such as an app ID and token), and a **Test** button checks the key.
+18 sources: 7 work with no key (including your own downloaded files), and 11 use your own account or API key. Add keys in **⚙ → Data sources & API keys**. Each provider has its own fields (some need two values, such as an app ID and token), and a **Test** button checks the key.
 
 ### Free (no key)
 
@@ -92,7 +92,7 @@ The server only listens on your own computer (127.0.0.1), because it can store y
 |---|---|---|
 | Twelve Data | US, world, forex, crypto (India on paid plans) | 800 requests/day |
 | Polygon.io (Massive) | US, crypto, forex | 5 requests/min, delayed |
-| Alpaca | US stocks (IEX feed), crypto | Free account, paper keys work |
+| Alpaca | US stocks (IEX or SIP feed), crypto | Free account, paper keys work; 5 years of history on every interval |
 | Tiingo | US stocks (decades of EOD), IEX intraday, crypto, forex | Free key |
 | Financial Modeling Prep | US free; world, India, forex, crypto on paid plans | 250 requests/day |
 | EODHD | 70+ exchanges incl. NSE/BSE, indices, forex, crypto | 20 requests/day, 1 year EOD |
@@ -100,18 +100,57 @@ The server only listens on your own computer (127.0.0.1), because it can store y
 | Alpha Vantage | US (incl. intraday), BSE, world, forex, crypto (daily+) | 25 requests/day |
 | Tradier | US stocks, ETFs, indices | Brokerage or sandbox token (detected automatically) |
 
+### Alpaca: 5 years of history and replay
+
+With Alpaca connected, US stock charts reach back 5 years on every interval, and bar replay can start at any date in that range.
+
+- **Keys:** enter them in **⚙ → Data sources & API keys**, or set environment variables (they win over the saved ones and are never sent to the browser). You can also put them in a `.env` file next to `server.mjs` (copy `.env.example`; `.env` is git-ignored):
+
+  | Variable | Meaning |
+  |---|---|
+  | `APCA_API_KEY_ID` | Your Alpaca API key ID |
+  | `APCA_API_SECRET_KEY` | Your Alpaca secret key |
+  | `ALPACA_DATA_FEED` | Optional. `iex` (default; one exchange, free and real-time) or `sip` (all US exchanges; free plans get it 15 minutes delayed) |
+  | `ALPACA_RATE_LIMIT` | Optional. Requests per minute LinkCharts allows itself (default 190; the free plan allows 200) |
+
+- **How history loads:** Alpaca serves about two weeks of minute data per request on every intraday interval, so loading years at once would be slow. A chart first loads a recent window (1m: 7 days, 5m: 30 days, 15m: 4 months, 30m: 8 months, 1H: 1 year, 1D and up: 5 years). Dragging the chart to the left loads older bars, batch by batch, back to 5 years.
+- **Replay any date:** in replay, type a date (and time, on intraday charts) and press **Go**. Bars around that date are fetched if they aren't loaded yet, and newer bars keep loading ahead of playback, so you can replay all the way to today. Weekends and holidays start at the last bar before them. **↺ Reset** goes back to where the replay started.
+- **Feed limits:** with the IEX feed, quiet minutes have no trades, so 1m charts have gaps and volume is IEX-only. The SIP feed has full volume and pre/post-market bars from 4:00 ET. Alpaca's stock history starts in 2016 (SIP) and mid-2020 (IEX).
+
+### Local files: replay any market from downloaded data
+
+For markets without a free API with long intraday history (forex, gold, index CFDs), download the bars once and LinkCharts charts and replays them like a live source, including loading older bars as you drag left and starting replay at any date.
+
+1. Make one folder per symbol in `data/history/`, named the way you want to search for it, e.g. `data/history/EURUSD/`, `data/history/GBPUSD/`, `data/history/XAUUSD/`, `data/history/NAS100/`.
+2. Put the downloaded files in it: `.csv` files, or the `.zip` files as downloaded (no need to unzip). Several files and overlaps are fine.
+3. Search for the symbol (it shows as "local files") and pick any interval: 5m, 15m, 1H, 1D and up are built from the 1-minute bars.
+
+**Free download from HistData.com** (1-minute bars for EUR/USD, GBP/USD, XAU/USD = gold, NSX/USD = Nasdaq 100):
+
+1. Open [histdata.com → Download free forex data → ASCII → 1-Minute Bar Quotes](https://www.histdata.com/download-free-forex-data/?/ascii/1-minute-bar-quotes).
+2. Pick the pair (e.g. EUR/USD). Download each full year you want (e.g. 2025), and each month of the current year.
+3. Move the `.zip` files into the symbol's folder (e.g. all EUR/USD zips into `data/history/EURUSD/`; NSX/USD into `data/history/NAS100/`).
+
+HistData times are New York standard time all year; LinkCharts converts them to UTC. Also understood: Dukascopy website exports, MetaTrader exports and any `time,open,high,low,close,volume` CSV (epoch or ISO dates, UTC unless they carry an offset). Dukascopy's free datafeed now refuses download tools such as `dukascopy-node` ("Too Many Requests"); its bulk data has moved to a paid Amazon S3 bucket.
+
+- **Times** are shown in UTC. Sunday-evening bars, when forex and index CFDs reopen, count towards Monday's daily candle.
+- **Updating:** add or replace files at any time; they are re-read on the next chart load. The first load of a symbol takes a few seconds (2 years of 1-minute bars is ~730,000 rows); after that it's instant. Other files in the folder (e.g. HistData's .txt gap reports) are ignored.
+- **No live updates:** the chart ends at the last bar in your files.
+
 **Choosing a source:** the settings screen has a per-market table (India, US, other exchanges, crypto, forex, futures). "Automatic" uses the best source you've connected. If it fails (expired token, rate limit, unsupported symbol), the app falls back to Yahoo, and the ⚠ on the source badge explains why.
 
 **Testing status:**
 - **Free sources:** tested end to end with real data.
-- **Key-based providers:** each was called with a dummy key and returned its proper "invalid key" error, which confirms the requests are well-formed. None has been tested with a real paid account yet.
+- **Alpaca:** tested with a real free account (history paging, replay, both feeds).
+- **Other key-based providers:** each was called with a dummy key and returned its proper "invalid key" error, which confirms the requests are well-formed. None has been tested with a real paid account yet.
 - **Reporting problems:** if one misbehaves with your key, please open an issue.
 
 ## Features
 
 - **Layout:** drawing tools on the left, chart in the middle, paper-trading panel at the bottom, and the watchlist with symbol details on the right. The right edge switches between Watchlist and Alerts.
 - **Drawing tools:**
-  - Tools: trend line, ray, extended line, horizontal line and ray, vertical line, rectangle, Fibonacci retracement and text.
+  - Tools: trend line, ray, extended line, horizontal line and ray, vertical line, rectangle, Fibonacci retracement, text, and long and short position.
+  - Long/short position: one click places a risk/reward box. Drag the corners to set target and stop, the right end of the entry line to set the width, and the left end to move the entry. It shows target, stop, quantity and risk/reward, and plays the trade through the candles inside the box, showing open or closed P&L. Double-click it (or ⚙ Settings) to set account size, risk, lot size, leverage, levels in ticks or price, and colours.
   - Editing: select, drag, recolour, clone or delete; a magnet snaps to open/high/low/close.
   - Drawings are saved per symbol. A selected horizontal line can turn into an alert (🔔).
 - **Indicators:**
@@ -125,7 +164,7 @@ The server only listens on your own computer (127.0.0.1), because it can store y
   - Conditions: above, below or crossing a price, once or every time.
   - When one fires you get a sound, a pop-up, a desktop notification and a log entry. The level is drawn on the chart.
   - Alerts are only checked while the app is open.
-- **Bar replay:** click **⏪ Replay**, then click a bar to start there. You can play (1×–25×) or step forward with Shift+→.
+- **Bar replay:** click **⏪ Replay**, then click a bar to start there, or type a date and press **Go**. You can play (1×–25×), step forward with Shift+→, or **↺ Reset** to the start. With Alpaca connected, replay reaches back 5 years.
 - **Paper trading:**
   - Market, limit and stop orders, with optional stop-loss and take-profit (one cancels the other). Long and short positions, P&L, history.
   - **Two separate accounts:** *Live* (current prices) and *Replay*, where orders fill against the replayed bars so you can practise on past data.
@@ -199,6 +238,7 @@ Everything you set up is saved automatically to **`market-app/data/userdata.json
 |---|---|
 | Start typing | Symbol search |
 | Alt+T / Alt+H / Alt+J / Alt+V / Alt+F / Alt+Shift+R | Trend line / horizontal line / horizontal ray / vertical line / Fib / rectangle |
+| Alt+L / Alt+S | Long position / short position |
 | Del · Esc | Delete selected drawing · cancel |
 | Alt+A | New alert |
 | Alt+R | Replay on/off |
@@ -214,6 +254,7 @@ Everything you set up is saved automatically to **`market-app/data/userdata.json
 | `src/boot.js` | Startup: loads saved data from disk before the app starts |
 | `providers.mjs` | Provider registry, Yahoo, Binance, Fyers, Twelve Data, Polygon |
 | `providers-extra.mjs` | Coinbase, Kraken, Upstox, CoinGecko, Kite, Alpaca, Tiingo, FMP, EODHD, Marketstack, Alpha Vantage, Tradier + shared time-zone/resampling helpers |
+| `providers-local.mjs` | Local files: reads downloaded CSV history from `data/history/<SYMBOL>/` and builds every interval from it |
 | `src/app.js` | Wiring: toolbar, loading, live updates, quotes, search, shortcuts |
 | `src/chart.js` | Price chart, volume, indicator overlays and panes, legend, coordinate helpers |
 | `src/drawings.js` | Drawing tools (a Lightweight Charts series primitive) |

@@ -1,6 +1,7 @@
 // Drawing tools rendered as a Lightweight Charts series primitive, so they pan/zoom with the chart.
 // A drawing is { id, type, points: [{ time, price }], color, width, text? }, stored per symbol.
-import { store, uid, bus, fmtPx, esc, precisionFor, askText, askConfirm } from "./util.js";
+import { store, uid, bus, fmtPx, fmtMoney, esc, precisionFor, askText, askConfirm } from "./util.js";
+import { isPosition, newPositionFields, calc, simulate, fmtQty, tickSize, roundTo, openPositionSettings } from "./position.js";
 
 export const TOOLS = [
   { id: "cursor", icon: "↖", label: "Cursor", key: "" },
@@ -13,6 +14,8 @@ export const TOOLS = [
   { id: "rect", icon: "▭", label: "Rectangle", key: "Alt+Shift+R", points: 2 },
   { id: "fib", icon: "≣", label: "Fib retracement", key: "Alt+F", points: 2 },
   { id: "text", icon: "T", label: "Text note", key: "", points: 1 },
+  { id: "long", icon: "⇡", label: "Long position", key: "Alt+L", points: 3 },
+  { id: "short", icon: "⇣", label: "Short position", key: "Alt+S", points: 3 },
 ];
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const FIB_COLORS = ["#868e96", "#f03e3e", "#fd7e14", "#40c057", "#15aabf", "#4c6ef5", "#868e96"];
@@ -52,6 +55,7 @@ class DrawingsPrimitive {
   detached() { this.requestUpdate = null; }
   updateAllViews() {}
   paneViews() { return this.views; }
+  priceAxisViews() { return this.ctrl.axisLabels(); }
 }
 
 export class Drawings {
@@ -146,6 +150,7 @@ export class Drawings {
     el.addEventListener("dblclick", (e) => {
       const hit = this.hitTest(this.local(e));
       if (hit?.d.type === "text") { e.stopPropagation(); this.editText(hit.d); }
+      if (hit && isPosition(hit.d)) { e.stopPropagation(); this.openSettings(hit.d); }
     }, true);
   }
 
@@ -167,6 +172,14 @@ export class Drawings {
       const p = this.toPoint(pos);
       if (!p) return;
       const def = TOOLS.find((t) => t.id === this.tool);
+      if (def.points === 3) {
+        const d = this.newPosition(this.tool, p, pos);
+        if (!d) return;
+        this.items.push(d);
+        this.placing = { drawing: d };
+        this.finishPlacing();
+        return;
+      }
       const d = { id: uid(), type: this.tool, points: def.points === 2 ? [p, { ...p }] : [p], color: DEFAULT_COLOR[this.tool], width: 2 };
       if (d.type === "text") {
         // Ask for the note in an in-app dialog, then place it where the user clicked.
@@ -194,7 +207,7 @@ export class Drawings {
     const handle = sel && this.handleAt(sel, pos);
     if (handle != null) {
       e.stopPropagation(); e.preventDefault();
-      this.dragLoop(e, (p) => { this.movePoint(sel, handle, p); }, () => this.save());
+      this.dragLoop(e, (p) => { this.movePoint(sel, handle, p); }, () => { this.save(); this.renderFloat(); });
       return;
     }
     const hit = this.hitTest(pos);
@@ -207,7 +220,7 @@ export class Drawings {
       this.dragLoop(e, (p) => {
         const dl = this.view.timeToLogical(p.time) - l0, dp = p.price - start.price;
         hit.d.points = orig.map((o) => ({ time: this.view.logicalToTime(this.view.timeToLogical(o.time) + dl), price: o.price + dp }));
-      }, () => this.save());
+      }, () => { this.save(); this.renderFloat(); });
       return;
     }
     if (this.selected) this.select(null);
@@ -250,7 +263,40 @@ export class Drawings {
     this.redraw();
   }
 
+  /** Builds a long/short box from one click: 20 bars wide, stop 50px from entry, target 100px (R:R 2). */
+  newPosition(type, p, pos) {
+    const digits = this.digits(), dir = type === "long" ? -1 : 1; // screen direction of the target
+    const end = this.view.logicalToTime(this.view.timeToLogical(p.time) + 20);
+    const target = this.view.yToPrice(pos.y + dir * 100) ?? p.price * (1 - dir * 0.02);
+    const stop = this.view.yToPrice(pos.y - dir * 50) ?? p.price * (1 + dir * 0.01);
+    if (end == null) return null;
+    const fields = newPositionFields();
+    return {
+      id: uid(), type, color: fields.style.line, width: fields.style.width, ...fields,
+      points: [{ time: p.time, price: roundTo(p.price, digits) }, { time: end, price: roundTo(target, digits) }, { time: p.time, price: roundTo(stop, digits) }],
+    };
+  }
+
+  /** Drags one of a position's handles; levels can't cross the entry and the box can't turn inside out. */
+  movePosition(d, handle, p) {
+    const digits = this.digits(), tick = tickSize(digits), long = d.type === "long";
+    const [e, t, s] = d.points;
+    const minBar = this.view.barSeconds();
+    const price = roundTo(p.price, digits);
+    if (handle === "entry") {
+      const time = Math.min(p.time, t.time - minBar);
+      d.points = [{ time, price: roundTo(Math.min(Math.max(price, Math.min(t.price, s.price) + tick), Math.max(t.price, s.price) - tick), digits) }, t, { ...s, time }];
+    } else if (handle === "width") d.points[1] = { ...t, time: Math.max(p.time, e.time + minBar) };
+    else if (handle === "target") d.points[1] = { ...t, price: roundTo(long ? Math.max(price, e.price + tick) : Math.min(price, e.price - tick), digits) };
+    else if (handle === "stop") d.points[2] = { ...s, price: roundTo(long ? Math.min(price, e.price - tick) : Math.max(price, e.price + tick), digits) };
+  }
+
+  openSettings(d) {
+    openPositionSettings(d, { digits: this.digits(), currency: this.view.meta?.currency, onApply: () => { this.save(); this.renderFloat(); this.redraw(); } });
+  }
+
   movePoint(d, index, p) {
+    if (isPosition(d)) return this.movePosition(d, index, p);
     if (d.type === "hline" || d.type === "hray") d.points[0] = { ...d.points[0], price: p.price, ...(d.type === "hray" ? { time: p.time } : {}) };
     else if (d.type === "vline") d.points[0] = { ...d.points[0], time: p.time };
     else d.points[index] = p;
@@ -288,9 +334,11 @@ export class Drawings {
     if (!d) { this.floatEl.hidden = true; return; }
     this.floatEl.hidden = false;
     const name = TOOLS.find((t) => t.id === d.type)?.label;
+    const c = isPosition(d) && calc(d, this.digits());
     this.floatEl.innerHTML = `<span class="muted">${esc(name)}</span>
-      <input type="color" value="${d.color}" title="Color" data-f="color" />
-      <select data-f="width" title="Line width">${[1, 2, 3, 4].map((w) => `<option ${w === d.width ? "selected" : ""} value="${w}">${w}px</option>`).join("")}</select>
+      ${c ? `<span>R:R ${c.rr.toFixed(2)} · Qty ${fmtQty(c.qty, d)}</span><button data-f="settings" title="Settings (double-click)">⚙ Settings</button>`
+        : `<input type="color" value="${d.color}" title="Color" data-f="color" />
+      <select data-f="width" title="Line width">${[1, 2, 3, 4].map((w) => `<option ${w === d.width ? "selected" : ""} value="${w}">${w}px</option>`).join("")}</select>`}
       ${d.type === "text" ? `<button data-f="edit">Edit text</button>` : ""}
       ${d.type === "hline" || d.type === "hray" ? `<button data-f="alert" title="Create a price alert at this level">🔔 Alert</button>` : ""}
       <button data-f="clone" title="Clone">⧉</button>
@@ -305,6 +353,7 @@ export class Drawings {
       const f = e.target.closest("button")?.dataset.f;
       if (f === "delete") this.deleteSelected();
       if (f === "edit") this.editText(d);
+      if (f === "settings") this.openSettings(d);
       if (f === "alert") bus.emit("create-alert", { price: d.points[0].price });
       if (f === "clone") {
         const step = this.view.barSeconds() * 5;
@@ -339,7 +388,26 @@ export class Drawings {
     return [start, end];
   }
 
+  digits() {
+    return precisionFor(this.view.candles[this.view.candles.length - 1]?.close ?? 1, this.view.meta?.symbol);
+  }
+
+  /** The target and stop edges' left corners, the right end of the entry line (width) and its left end (entry). */
+  positionHandles(d) {
+    const [e, t, s] = this.screen(d);
+    return [{ name: "target", x: e.x, y: t.y }, { name: "stop", x: e.x, y: s.y }, { name: "width", x: t.x, y: e.y }, { name: "entry", x: e.x, y: e.y }];
+  }
+
   handleAt(d, pos) {
+    if (isPosition(d)) {
+      // Nearest handle wins; on a tie (a level dragged onto the entry) the level comes first so it can be pulled back out.
+      let best = null, bestDist = 8;
+      for (const q of this.positionHandles(d)) {
+        const dist = q.x == null || q.y == null ? Infinity : Math.hypot(q.x - pos.x, q.y - pos.y);
+        if (dist < bestDist) { best = q.name; bestDist = dist; }
+      }
+      return best;
+    }
     const pts = this.screen(d);
     if (d.type === "hline") return Math.abs(pos.y - pts[0].y) < 6 && Math.abs(pos.x - this.view.paneWidth() / 2) < 8 ? 0 : null;
     if (d.type === "vline") return Math.abs(pos.x - pts[0].x) < 6 && Math.abs(pos.y - 20) < 8 ? 0 : null;
@@ -371,6 +439,11 @@ export class Drawings {
           hit = pos.x >= x1 - 5 && pos.x <= x2 + 5 && FIB_LEVELS.some((lv) => Math.abs(pos.y - (p[1].y + (p[0].y - p[1].y) * lv)) < 6);
           break;
         }
+        case "long": case "short": {
+          const x1 = Math.min(p[0].x, p[1].x), x2 = Math.max(p[0].x, p[1].x), y1 = Math.min(p[1].y, p[2].y), y2 = Math.max(p[1].y, p[2].y);
+          hit = pos.x >= x1 - 5 && pos.x <= x2 + 5 && pos.y >= y1 - 5 && pos.y <= y2 + 5;
+          break;
+        }
         case "text": hit = pos.x >= p[0].x - 4 && pos.x <= p[0].x + (d._w || 60) + 4 && pos.y >= p[0].y - 18 && pos.y <= p[0].y + 6; break;
       }
       if (hit) return { d };
@@ -382,7 +455,7 @@ export class Drawings {
 
   draw(ctx, size) {
     const w = this.view.paneWidth(), h = size.height;
-    const digits = precisionFor(this.view.candles[this.view.candles.length - 1]?.close ?? 1, this.view.meta?.symbol);
+    const digits = this.digits();
     for (const d of this.items) {
       const p = this.screen(d);
       if (p.some((q) => q.x == null && d.type !== "hline" || q.y == null && d.type !== "vline")) continue;
@@ -431,6 +504,7 @@ export class Drawings {
           ctx.strokeStyle = d.color; ctx.setLineDash([4, 4]); line(p[0], p[1]); ctx.setLineDash([]);
           break;
         }
+        case "long": case "short": this.drawPosition(ctx, d, p, digits, selected); break;
         case "text": {
           ctx.font = "600 13px Inter, sans-serif";
           d._w = ctx.measureText(d.text).width;
@@ -440,12 +514,80 @@ export class Drawings {
         }
       }
       if (selected) {
-        ctx.fillStyle = "#0f1115"; ctx.strokeStyle = "#2962ff"; ctx.lineWidth = 2;
-        const handles = d.type === "hline" ? [{ x: w / 2, y: p[0].y }] : d.type === "vline" ? [{ x: p[0].x, y: 20 }] : p;
+        ctx.fillStyle = this.view.palette.bg; ctx.strokeStyle = "#2962ff"; ctx.lineWidth = 2;
+        const handles = d.type === "hline" ? [{ x: w / 2, y: p[0].y }] : d.type === "vline" ? [{ x: p[0].x, y: 20 }] : isPosition(d) ? this.positionHandles(d) : p;
         for (const q of handles) { ctx.beginPath(); ctx.arc(q.x, q.y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
       }
       ctx.restore();
     }
+  }
+
+  /** Target and stop zones, the simulated trade path, and the stats tags. */
+  drawPosition(ctx, d, p, digits, selected) {
+    const st = d.style, c = calc(d, digits), sim = simulate(d, this.view.candles, c.qty);
+    const [e, t, s] = p;
+    const x1 = Math.min(e.x, t.x), x2 = Math.max(e.x, t.x), bw = x2 - x1;
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = st.targetColor; ctx.fillRect(x1, Math.min(e.y, t.y), bw, Math.abs(t.y - e.y));
+    ctx.fillStyle = st.stopColor; ctx.fillRect(x1, Math.min(e.y, s.y), bw, Math.abs(s.y - e.y));
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = st.line; ctx.lineWidth = st.width;
+    const line = (a, b) => { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); };
+
+    if (sim.activeTime != null) {
+      const xa = this.view.timeToX(sim.activeTime), xb = this.view.timeToX(sim.exitTime), yx = this.view.priceToY(sim.exitPrice);
+      if (xa != null && xb != null && yx != null) {
+        ctx.globalAlpha = 0.25; ctx.fillStyle = sim.pnl >= 0 ? st.targetColor : st.stopColor;
+        ctx.fillRect(xa, Math.min(e.y, yx), Math.max(xb - xa, 1), Math.abs(yx - e.y));
+        ctx.globalAlpha = 1; ctx.setLineDash([4, 3]); line({ x: xa, y: e.y }, { x: xb, y: yx }); ctx.setLineDash([]);
+        if (sim.status === "target" || sim.status === "stop") { ctx.fillStyle = st.line; ctx.beginPath(); ctx.arc(xb, yx, 3, 0, Math.PI * 2); ctx.fill(); }
+      }
+    }
+    line({ x: x1, y: e.y }, { x: x2, y: e.y });
+
+    if (!st.alwaysStats && !selected) return;
+    const money = (v) => fmtMoney(v, this.view.meta?.currency);
+    const closed = sim.status === "target" || sim.status === "stop" || sim.status === "expired";
+    const pnl = sim.status === "pending" ? "—" : money(sim.pnl);
+    const qty = fmtQty(c.qty, d), rr = c.rr.toFixed(2);
+    const rows = st.compact
+      ? { target: [`${c.targetTicks} (${c.targetPct.toFixed(2)}%) ${money(c.targetAmt)}`], mid: [`${pnl}, ${qty}`, rr], stop: [`${c.stopTicks} (${c.stopPct.toFixed(2)}%) ${money(c.stopAmt)}`] }
+      : {
+          target: [`Target: ${fmtPx(c.target, digits)} (${c.targetPct.toFixed(2)}%) ${c.targetTicks}, Amount: ${money(c.targetAmt)}`],
+          mid: [`${sim.status === "pending" ? "Not triggered" : (closed ? "Closed P&L: " : "Open P&L: ") + pnl}, Qty: ${qty}`, `Risk/Reward Ratio: ${rr}`],
+          stop: [`Stop: ${fmtPx(c.stop, digits)} (${c.stopPct.toFixed(2)}%) ${c.stopTicks}, Amount: ${money(c.stopAmt)}`],
+        };
+    const lh = st.fontSize + 4, cx = (x1 + x2) / 2;
+    ctx.font = `${st.fontSize}px Inter, sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    // A rounded tag centred on cx; side -1 puts it above y, 1 below, 0 centred on it.
+    const tagBox = (lines, y, side, bg) => {
+      const tw = Math.max(...lines.map((r) => ctx.measureText(r).width)) + 12, th = lines.length * lh + 6;
+      const top = side < 0 ? y - th - 4 : side > 0 ? y + 4 : y - th / 2;
+      ctx.fillStyle = bg; ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(cx - tw / 2, top, tw, th, 3); else ctx.rect(cx - tw / 2, top, tw, th);
+      ctx.fill();
+      ctx.fillStyle = st.textColor;
+      lines.forEach((r, i) => ctx.fillText(r, cx, top + 3 + lh * i + lh / 2));
+    };
+    tagBox(rows.target, t.y, t.y < e.y ? -1 : 1, st.targetColor);
+    tagBox(rows.stop, s.y, s.y < e.y ? -1 : 1, st.stopColor);
+    tagBox(rows.mid, e.y, 0, sim.status === "pending" ? st.line : sim.pnl >= 0 ? st.targetColor : st.stopColor);
+  }
+
+  /** Price-axis tags for the selected position's target, entry and stop. */
+  axisLabels() {
+    const d = this.selected && this.items.find((x) => x.id === this.selected);
+    if (!d || !isPosition(d) || !d.style.priceLabels) return [];
+    const digits = this.digits(), st = d.style;
+    return [[d.points[1].price, st.targetColor], [d.points[0].price, st.line], [d.points[2].price, st.stopColor]].map(([price, bg]) => ({
+      coordinate: () => this.view.priceToY(price) ?? -100,
+      text: () => fmtPx(price, digits),
+      textColor: () => st.textColor,
+      backColor: () => bg,
+      visible: () => true,
+      tickVisible: () => true,
+    }));
   }
 }
 

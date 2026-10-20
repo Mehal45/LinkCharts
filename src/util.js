@@ -91,7 +91,7 @@ export const currencySymbol = (c) => SYMBOL[c] ?? (c ? c + " " : "");
 
 /** Decimal places that suit a price's magnitude (forex and small coins need more). */
 export function precisionFor(price, symbol = "") {
-  if (/=X$/.test(symbol)) return price > 20 ? 3 : 5;
+  if (/=X$|^[A-Z]{3}(USD|EUR|GBP|JPY|CHF|AUD|CAD|NZD)$/.test(symbol)) return price > 20 ? 3 : 5; // currency pairs and metals (XAUUSD)
   const p = Math.abs(price || 0);
   if (p >= 1) return 2;
   if (p >= 0.01) return 4;

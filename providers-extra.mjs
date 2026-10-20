@@ -412,40 +412,187 @@ export const marketstack = {
 };
 
 // ---------------- Alpaca ----------------
+// Bars come from data.alpaca.markets, chained with next_page_token. On every intraday timeframe one page
+// covers only ~10,000 one-minute bars (about two weeks of trading), so a request's cost follows the date
+// range, not the bar count. Ranges are split into chunks fetched in parallel, an intraday chart first loads
+// a recent window, and older bars arrive in time-sized batches through history() as you scroll back or
+// replay an earlier date, up to 5 years back.
 const AL_TF = { "1m": "1Min", "5m": "5Min", "15m": "15Min", "30m": "30Min", "60m": "1Hour", "1d": "1Day", "1wk": "1Week", "1mo": "1Month" };
-const AL_SPAN = { "1m": 5, "5m": 30, "15m": 60, "30m": 90, "60m": 180, "1d": 1825, "1wk": 3650, "1mo": 3650 };
+const AL_SPAN = { "1m": 7, "5m": 30, "15m": 120, "30m": 240, "60m": 365, "1d": 1826, "1wk": 3650, "1mo": 3650 }; // days in the first load
+const AL_BATCH = { "1m": 10, "5m": 40, "15m": 120, "30m": 240, "60m": 365, "1d": 1826, "1wk": 3650, "1mo": 3650 }; // days per history() batch
+const AL_HISTORY_DAYS = 1826; // how far back history() may page (5 years)
+const AL_CHUNK_DAYS = 20; // one or two pages of intraday data
+const AL_PARALLEL = 6; // chunks in flight at once
+const AL_PAGE = 10000; // Alpaca's per-request maximum
+const AL_MAX_BARS = 200000; // safety cap for one chain of pages
+const AL_REFULL_S = 6 * 3600; // after this, reload the whole window instead of only the newest bars
+const alpacaCache = new Map(); // symbol|interval|feed -> { candles, at } so refreshes only fetch new bars
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const isIntraday = (interval) => /m$/.test(interval);
+
+// Client-side rate limit, below Alpaca's (200 requests/min on the free plan), so bursts of chunks queue up
+// instead of failing with 429. Paid plans can raise it with ALPACA_RATE_LIMIT.
+const alpacaRate = () => Number(process.env.ALPACA_RATE_LIMIT) || 190;
+const alpacaCalls = []; // start times (ms) of requests in the last minute
+async function alpacaThrottle() {
+  for (;;) {
+    const t = Date.now();
+    while (alpacaCalls.length && t - alpacaCalls[0] >= 60_000) alpacaCalls.shift();
+    if (alpacaCalls.length < alpacaRate()) { alpacaCalls.push(t); return; }
+    await sleep(60_000 - (t - alpacaCalls[0]) + 20);
+  }
+}
+
+const alpacaFeed = (cfg) => (String(cfg.feed || "").trim().toLowerCase() === "sip" ? "sip" : "iex");
+
+/** One Alpaca request, retrying rate limits (429), server errors and network failures. */
+async function alpacaGet(url, cfg) {
+  const headers = { "APCA-API-KEY-ID": cfg.keyId, "APCA-API-SECRET-KEY": cfg.secret };
+  for (let attempt = 0; ; attempt++) {
+    await alpacaThrottle();
+    try {
+      return await getJson(url, { headers });
+    } catch (err) {
+      const status = err instanceof ProviderError ? err.status : 0; // 0 = network failure (fetch threw)
+      if (status === 401) throw new ProviderError("Alpaca rejected the API key ID or secret", 401);
+      const transient = status === 0 || status === 429 || status >= 500;
+      if (!transient || attempt >= 3) {
+        if (status === 429) throw new ProviderError("Alpaca rate limit reached (200 requests/min on the free plan); try again in a minute", 429);
+        throw status ? err : new ProviderError(`Couldn't reach Alpaca: ${err.message}`, 502);
+      }
+      await sleep(status === 429 ? 4000 * (attempt + 1) : 500 * 2 ** attempt);
+    }
+  }
+}
+
+/**
+ * Bars between start and end (unix s), following next_page_token until done or maxBars.
+ * sort "desc" walks back from `end`, so the cap drops the oldest bars and maxBars means "the N bars before end".
+ * Returns ascending, de-duplicated candles and whether Alpaca had more pages.
+ */
+async function alpacaBars(symbol, interval, cfg, { start, end, sort = "asc", maxBars = AL_MAX_BARS }) {
+  const p = parse(symbol);
+  const crypto = p.kind === "crypto";
+  const pair = crypto ? `${p.base}/${p.quote === "USDT" ? "USD" : p.quote}` : null;
+  const feed = alpacaFeed(cfg);
+  const base = crypto
+    ? `https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=${encodeURIComponent(pair)}`
+    : `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(p.base)}/bars?adjustment=split&feed=${feed}`;
+  const iso = (t) => new Date(t * 1000).toISOString();
+  let out = [], token = null, clamped = false;
+  const seen = new Set();
+  for (;;) {
+    const limit = Math.min(AL_PAGE, maxBars - out.length);
+    const url = `${base}&timeframe=${AL_TF[interval]}&start=${iso(start)}&end=${iso(end)}&limit=${limit}&sort=${sort}${token ? `&page_token=${encodeURIComponent(token)}` : ""}`;
+    let body;
+    try {
+      body = await alpacaGet(url, cfg);
+    } catch (err) {
+      // Free plans can't query the latest 15 minutes of SIP data: retry once, ending 16 minutes ago.
+      if (!crypto && feed === "sip" && !clamped && err.status === 403 && /sip/i.test(err.message) && end > now() - 960) {
+        clamped = true; end = now() - 960; out = []; token = null; seen.clear();
+        if (start > end) return { candles: [], more: false };
+        continue;
+      }
+      throw err.status === 403 ? new ProviderError(`Alpaca: ${err.message} (check your plan's data feed)`, 403) : err;
+    }
+    const bars = (crypto ? body.bars?.[pair] : body.bars) || [];
+    for (const b of bars) out.push({ time: toUnix(b.t), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v });
+    token = body.next_page_token || null;
+    if (token && seen.has(token)) throw new ProviderError("Alpaca returned the same page twice", 502);
+    if (!token || out.length >= maxBars) break;
+    seen.add(token);
+  }
+  return { candles: uniqueAsc(out), more: !!token };
+}
+
+/** Every bar in [start, end] (unix s): intraday ranges are split into chunks fetched AL_PARALLEL at a time. */
+async function alpacaRange(symbol, interval, cfg, start, end) {
+  const step = isIntraday(interval) ? AL_CHUNK_DAYS * DAY : end - start + 1;
+  const chunks = [];
+  for (let s = start; s <= end; s += step) chunks.push([s, Math.min(s + step - 1, end)]);
+  const results = [];
+  let next = 0, failed = false;
+  await Promise.all(Array.from({ length: Math.min(AL_PARALLEL, chunks.length) }, async () => {
+    while (next < chunks.length && !failed) {
+      const i = next++;
+      try { results[i] = (await alpacaBars(symbol, interval, cfg, { start: chunks[i][0], end: chunks[i][1] })).candles; }
+      catch (err) { failed = true; throw err; }
+    }
+  }));
+  return uniqueAsc(results.flat());
+}
+
+/** Sorted ascending with one bar per timestamp (the later copy wins). */
+function uniqueAsc(candles) {
+  const out = [];
+  for (const c of sortAsc(candles)) {
+    if (out.length && out[out.length - 1].time === c.time) out[out.length - 1] = c;
+    else out.push(c);
+  }
+  return out;
+}
+
 export const alpaca = {
   id: "alpaca", name: "Alpaca", markets: ["us", "crypto"], live: false,
-  note: "Free account at alpaca.markets (paper trading keys work). US stocks on the free IEX feed with years of history, plus crypto.",
+  note: "Free account at alpaca.markets (paper trading keys work). US stocks with up to 5 years of history on every interval, plus crypto. Feed \"iex\" (default) is one exchange; \"sip\" covers all exchanges (15 minutes delayed on the free plan). Keys can also come from the APCA_API_KEY_ID / APCA_API_SECRET_KEY environment variables.",
   fields: [
-    { key: "keyId", label: "API key ID", placeholder: "PK…" },
-    { key: "secret", label: "Secret key", placeholder: "Your secret key", secret: true },
+    { key: "keyId", label: "API key ID", placeholder: "PK…", secret: true, env: "APCA_API_KEY_ID" },
+    { key: "secret", label: "Secret key", placeholder: "Your secret key", secret: true, env: "APCA_API_SECRET_KEY" },
+    { key: "feed", label: "Stock data feed", placeholder: "iex (default) or sip", optional: true, env: "ALPACA_DATA_FEED" },
   ],
   testSymbol: "AAPL",
   supports: (symbol) => { const p = parse(symbol); return p.kind === "us" || (p.kind === "crypto" && ["USD", "USDT", "BTC"].includes(p.quote)); },
   async candles(symbol, interval, cfg) {
-    const p = parse(symbol);
-    const headers = { "APCA-API-KEY-ID": cfg.keyId, "APCA-API-SECRET-KEY": cfg.secret };
-    const start = new Date((now() - AL_SPAN[interval] * DAY) * 1000).toISOString();
-    const out = [];
-    let pageToken = null;
-    for (let page = 0; page < 5; page++) {
-      const pt = pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : "";
-      let bars;
-      if (p.kind === "crypto") {
-        const pair = `${p.base}/${p.quote === "USDT" ? "USD" : p.quote}`;
-        const body = await getJson(`https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=${encodeURIComponent(pair)}&timeframe=${AL_TF[interval]}&start=${start}&limit=10000${pt}`, { headers });
-        bars = body.bars?.[pair] || [];
-        pageToken = body.next_page_token;
-      } else {
-        const body = await getJson(`https://data.alpaca.markets/v2/stocks/${encodeURIComponent(p.base)}/bars?timeframe=${AL_TF[interval]}&start=${start}&limit=10000&adjustment=split&feed=iex${pt}`, { headers });
-        bars = body.bars || [];
-        pageToken = body.next_page_token;
-      }
-      out.push(...bars.map((b) => ({ time: toUnix(b.t), open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v })));
-      if (!pageToken) break;
+    const key = `${symbol}|${interval}|${alpacaFeed(cfg)}`;
+    const hit = alpacaCache.get(key);
+    const end = now();
+    if (hit && end - hit.at < AL_REFULL_S && hit.candles.length) {
+      // Only the newest bars: from the last cached one (it may still have been forming) to now.
+      const { candles: fresh } = await alpacaBars(symbol, interval, cfg, { start: hit.candles[hit.candles.length - 1].time, end });
+      hit.candles = uniqueAsc(hit.candles.concat(fresh));
+      return hit.candles;
     }
-    return sortAsc(out);
+    const candles = await alpacaRange(symbol, interval, cfg, end - AL_SPAN[interval] * DAY + 1, end);
+    alpacaCache.delete(key);
+    alpacaCache.set(key, { candles, at: end });
+    if (alpacaCache.size > 16) alpacaCache.delete(alpacaCache.keys().next().value);
+    return candles;
+  },
+  /**
+   * The batch of bars (AL_BATCH days) strictly before `before` or strictly after `after` (unix s).
+   * `done` = nothing further that way. An empty window (before the listing, a long halt) is skipped
+   * with one daily-bar lookup to where trading resumes.
+   */
+  async history(symbol, interval, cfg, { before, after }) {
+    const t = now();
+    const floor = t - Math.max(AL_HISTORY_DAYS, AL_SPAN[interval]) * DAY;
+    const span = AL_BATCH[interval] * DAY;
+    if (before != null) {
+      let end = Math.min(before, t) - 1;
+      for (let jumps = 0; jumps < 3; jumps++) {
+        if (end <= floor) return { candles: [], done: true };
+        const start = Math.max(floor, end - span + 1);
+        const candles = await alpacaRange(symbol, interval, cfg, start, end);
+        if (candles.length) return { candles, done: start <= floor };
+        const d = await alpacaBars(symbol, "1d", cfg, { start: floor, end: start - 1, sort: "desc", maxBars: 1 });
+        if (!d.candles.length) return { candles: [], done: true };
+        end = d.candles[0].time + DAY - 1; // the end of that trading day
+      }
+      return { candles: [], done: false };
+    }
+    let start = Math.max(after + 1, floor);
+    for (let jumps = 0; jumps < 3; jumps++) {
+      if (start >= t) return { candles: [], done: true };
+      const end = Math.min(t, start + span - 1);
+      const candles = await alpacaRange(symbol, interval, cfg, start, end);
+      if (candles.length) return { candles, done: end >= t };
+      if (end >= t) return { candles: [], done: true };
+      const d = await alpacaBars(symbol, "1d", cfg, { start: end + 1, end: t, sort: "asc", maxBars: 1 });
+      if (!d.candles.length) return { candles: [], done: true };
+      start = d.candles[0].time; // the start of the next trading day
+    }
+    return { candles: [], done: false };
   },
 };
 

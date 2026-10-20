@@ -168,6 +168,21 @@ export class ChartView {
     this.renderLegend();
   }
 
+  /** Adds older bars in front without moving what's on screen. Returns how many were added. */
+  prepend(older) {
+    const first = this.candles[0]?.time ?? Infinity;
+    const add = older.filter((c) => c.time < first);
+    if (!add.length) return 0;
+    const range = this.chart.timeScale().getVisibleLogicalRange();
+    this.candles = add.concat(this.candles);
+    this.price.setData(this.priceData(this.candles));
+    this.volume?.setData(this.volumeData(this.candles));
+    this.renderStudies();
+    if (range) this.setRange({ from: range.from + add.length, to: range.to + add.length });
+    this.renderLegend();
+    return add.length;
+  }
+
   showTail(n) {
     const len = this.candles.length;
     const count = n ?? (this.intraday ? 160 : 200);

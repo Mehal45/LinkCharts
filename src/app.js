@@ -130,7 +130,13 @@ class Slot {
     this.view.setStudies(this.studies);
     this.drawings = new Drawings(this.view, { floating: q(".float-bar"), onToolChange: () => { if (this === active()) renderTools(); } });
     this.drawings.setSymbol(this.symbol);
-    this.replay = new Replay({ view: this.view, bar: q(".replay-bar"), onExit: () => this.load() });
+    this.older = { loading: false, done: false, retryAt: 0 }; // paging state for bars before the first one loaded
+    this.replay = new Replay({
+      view: this.view, bar: q(".replay-bar"), onExit: () => this.load(),
+      loader: { enabled: () => !!this.source?.history, around: (t) => this.historyAround(t), newer: (t) => this.history({ after: t }) },
+    });
+    // Scrolling near the left edge pages in older bars (sources that support it, e.g. Alpaca).
+    this.view.chart.timeScale().subscribeVisibleLogicalRangeChange((r) => { if (r && r.from < 50) this.loadOlder(); });
 
     // Clicking anywhere in a chart makes it the active one (without stealing the click).
     this.el.addEventListener("pointerdown", () => setActive(slots.indexOf(this)), true);
@@ -163,6 +169,7 @@ class Slot {
       const off = data.meta.gmtoffset ?? 0; // show the exchange's local time on the axis
       const candles = dedupe(data.candles.map((c) => ({ ...c, time: c.time + off })));
       Object.assign(this, { meta: data.meta, source: data.source, fallback: data.fallback, offset: off });
+      this.older = { loading: false, done: false, retryAt: 0 };
       this.view.offset = off;
       this.view.intraday = this.isIntraday();
       if (!(this.replay.active && this.replay.reload(candles))) {
@@ -189,12 +196,51 @@ class Slot {
     if (this.replay.state !== "off" || this.source?.stream || !this.meta) return;
     if (!(this.isIntraday() || this.meta.marketOpen)) return;
     try {
-      const data = await api(`/api/chart?symbol=${encodeURIComponent(this.symbol)}&interval=${this.interval}`);
+      const data = await api(`/api/chart?symbol=${encodeURIComponent(this.symbol)}&interval=${this.interval}&tail=300`);
       if (data.meta.symbol !== this.symbol) return;
       this.view.mergeTail(dedupe(data.candles.map((c) => ({ ...c, time: c.time + (data.meta.gmtoffset ?? 0) }))));
       this.meta = data.meta;
       this.afterLiveUpdate();
     } catch { /* keep showing the last good data */ }
+  }
+
+  /** Bars from this chart's own source before/after a chart time (the server works in UTC). */
+  async history({ before, after }) {
+    const at = before != null ? `before=${before - this.offset}` : `after=${after - this.offset}`;
+    const data = await api(`/api/history?symbol=${encodeURIComponent(this.symbol)}&interval=${this.interval}&source=${this.source.id}&${at}`);
+    return { candles: dedupe(data.candles.map((c) => ({ ...c, time: c.time + this.offset }))), done: data.done };
+  }
+
+  /** A replay window around time `t`: a batch of bars up to it (for indicators) and a batch after it to play. */
+  async historyAround(t) {
+    const [past, next] = await Promise.all([this.history({ before: t + 1 }), this.history({ after: t })]);
+    this.older = { loading: false, done: past.done, retryAt: 0 };
+    return { candles: dedupe(past.candles.concat(next.candles)), endReached: next.done };
+  }
+
+  /** Prepends the batch of bars before the first one on the chart (or in the replay window). */
+  async loadOlder() {
+    const o = this.older;
+    if (!this.source?.history || o.loading || o.done || Date.now() < o.retryAt) return;
+    const bars = this.replay.state !== "off" ? this.replay.full : this.view.candles;
+    if (!bars.length) return;
+    const token = this.loadToken, symbol = this.symbol, interval = this.interval;
+    o.loading = true;
+    try {
+      const r = await this.history({ before: bars[0].time });
+      if (token !== this.loadToken || symbol !== this.symbol || interval !== this.interval || o !== this.older) return;
+      o.done = r.done || !r.candles.length;
+      if (this.replay.state !== "off") this.replay.prepend(r.candles);
+      else this.view.prepend(r.candles);
+      this.drawings.redraw();
+      alerts.drawLines();
+      trading.drawLines();
+    } catch (err) {
+      o.retryAt = Date.now() + 15000; // don't hammer the API while the user keeps scrolling
+      toast(`Couldn't load older bars: ${err.message}`, "error");
+    } finally {
+      o.loading = false;
+    }
   }
 
   afterLiveUpdate() {

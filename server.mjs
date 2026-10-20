@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROVIDERS, MARKETS, INTERVALS, marketOf, yahoo, ProviderError } from "./providers.mjs";
+import { local, localSymbols } from "./providers-local.mjs";
 import { runScreen, performance, SCREENER_MARKETS, SECTORS } from "./screener.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -16,6 +17,10 @@ function launchBrowser(url) {
   const cmd = process.platform === "win32" ? `start "" "${url}"` : process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;
   exec(cmd, () => { /* no browser to launch; the URL is printed above */ });
 }
+// Optional .env next to server.mjs (KEY=value lines, git-ignored), e.g. APCA_API_KEY_ID / APCA_API_SECRET_KEY.
+// Real environment variables win over the file.
+const envPath = path.join(root, ".env");
+if (fs.existsSync(envPath) && typeof process.loadEnvFile === "function") process.loadEnvFile(envPath);
 const configPath = path.join(root, "data", "config.json");
 // Everything the app remembers (watchlists, alerts, drawings, paper trades, layouts, theme…)
 // is mirrored here so it survives cleared browser data or a different browser.
@@ -45,11 +50,18 @@ let config = loadConfig();
 config.providers ??= {};
 config.routing ??= {};
 
+/** Saved settings for a provider, with any field that names an environment variable (`env`) taken from it. */
+const fromEnv = (f) => (f.env && process.env[f.env]?.trim()) || "";
+function providerConfig(id) {
+  const c = { ...(config.providers[id] || {}) };
+  for (const f of PROVIDERS[id].fields || []) if (fromEnv(f)) c[f.key] = fromEnv(f);
+  return c;
+}
 const isConfigured = (id) => {
   const p = PROVIDERS[id];
   if (p.builtIn) return true;
-  const c = config.providers[id];
-  return p.fields.every((f) => f.optional || c?.[f.key]);
+  const c = providerConfig(id);
+  return p.fields.every((f) => f.optional || c[f.key]);
 };
 const mask = (v) => (v ? `••••${String(v).slice(-4)}` : "");
 
@@ -71,7 +83,9 @@ function candidateSources(symbol, interval) {
   const market = marketOf(symbol);
   const chosen = config.routing[market];
   const explicit = chosen && chosen !== "auto";
-  const order = explicit ? [chosen, "yahoo"] : AUTO_ORDER[market];
+  // Symbols with downloaded files (data/history/<SYMBOL>/) always use them first.
+  const own = local.supports(symbol) ? ["local"] : [];
+  const order = explicit ? [...own, chosen, "yahoo"] : [...own, ...AUTO_ORDER[market]];
   return [...new Set(order)].filter((id) => {
     const p = PROVIDERS[id];
     if (!p || !isConfigured(id) || !p.markets.includes(market) || (p.supports && !p.supports(symbol, interval))) return false;
@@ -109,14 +123,14 @@ async function snapshot(symbol) {
 
 // ---------------- API ----------------
 
-async function chart(symbol, interval) {
+async function chart(symbol, interval, tail = 0) {
   const sources = candidateSources(symbol, interval);
   const errors = [];
   let candles = null, used = null;
   for (const id of sources) {
     try {
       const ttl = interval.endsWith("m") ? 8_000 : 60_000;
-      candles = await cached(`c:${id}:${symbol}:${interval}`, ttl, () => PROVIDERS[id].candles(symbol, interval, config.providers[id] || {}));
+      candles = await cached(`c:${id}:${symbol}:${interval}`, ttl, () => PROVIDERS[id].candles(symbol, interval, providerConfig(id)));
       if (!candles.length) throw new ProviderError("returned no candles", 404);
       used = PROVIDERS[id];
       break;
@@ -126,13 +140,14 @@ async function chart(symbol, interval) {
   }
   if (!used) throw new ProviderError(errors.join(" · ") || "No data source supports this symbol", 404);
   let meta;
-  try { meta = await snapshot(symbol); } catch {
+  try { meta = used === local ? await local.quote(symbol) : await snapshot(symbol); } catch {
     const last = candles[candles.length - 1];
     meta = { symbol, name: symbol, exchange: "", currency: "", gmtoffset: 0, price: last.close, prevClose: candles[candles.length - 2]?.close, market: marketOf(symbol), marketOpen: false };
   }
   return {
-    meta, candles,
-    source: { id: used.id, name: used.name, live: !!used.live, stream: used.stream?.(symbol, interval) || null },
+    meta, candles: tail ? candles.slice(-tail) : candles,
+    // history: the chart can page older/newer bars from this source through /api/history.
+    source: { id: used.id, name: used.name, live: !!used.live, stream: used.stream?.(symbol, interval) || null, history: !!used.history },
     fallback: errors.length ? errors : null,
   };
 }
@@ -144,7 +159,9 @@ function providersView() {
     providers: Object.values(PROVIDERS).map((p) => ({
       id: p.id, name: p.name, builtIn: !!p.builtIn, markets: p.markets, note: p.note, live: !!p.live,
       configured: isConfigured(p.id),
-      fields: (p.fields || []).map((f) => ({ ...f, value: f.secret ? mask(config.providers[p.id]?.[f.key]) : config.providers[p.id]?.[f.key] || "" })),
+      fields: (p.fields || []).map((f) => (fromEnv(f)
+        ? { ...f, value: mask(fromEnv(f)), fromEnv: true } // set by an environment variable: only a masked hint reaches the page
+        : { ...f, value: f.secret ? mask(config.providers[p.id]?.[f.key]) : config.providers[p.id]?.[f.key] || "" })),
     })),
   };
 }
@@ -161,23 +178,43 @@ async function handleApi(req, url) {
     const symbol = url.searchParams.get("symbol") || "";
     const interval = url.searchParams.get("interval") || "1d";
     if (!SYMBOL_RE.test(symbol) || !INTERVALS.includes(interval)) throw new ProviderError("Bad symbol or interval", 400);
-    return chart(symbol, interval);
+    const tail = Math.max(0, Math.min(5000, Math.floor(Number(url.searchParams.get("tail"))) || 0)); // refreshes only need the newest bars
+    return chart(symbol, interval, tail);
+  }
+  // The batch of older (before=unix s) or newer (after=unix s) bars from the source the chart already uses. No fallback to
+  // another source: mixing feeds inside one chart would splice different prices together.
+  if (p === "/api/history") {
+    const symbol = url.searchParams.get("symbol") || "";
+    const interval = url.searchParams.get("interval") || "";
+    const id = url.searchParams.get("source") || "";
+    const num = (k) => (url.searchParams.has(k) ? Math.floor(Number(url.searchParams.get(k))) : null);
+    const before = num("before"), after = num("after");
+    if (!SYMBOL_RE.test(symbol) || !INTERVALS.includes(interval)) throw new ProviderError("Bad symbol or interval", 400);
+    if ((before == null) === (after == null) || !Number.isFinite(before ?? after)) throw new ProviderError("Pass either before or after (unix seconds)", 400);
+    const prov = Object.hasOwn(PROVIDERS, id) ? PROVIDERS[id] : null;
+    if (!prov?.history || !isConfigured(id) || (prov.supports && !prov.supports(symbol, interval))) throw new ProviderError("This data source can't load more history", 400);
+    return cached(`h:${id}:${symbol}:${interval}:${before}:${after}`, 60_000, () => prov.history(symbol, interval, providerConfig(id), { before, after }));
   }
   if (p === "/api/quotes") {
     const symbols = (url.searchParams.get("symbols") || "").split(",").filter((s) => SYMBOL_RE.test(s)).slice(0, 80);
-    const results = await Promise.allSettled(symbols.map((s) => snapshot(s)));
+    const results = await Promise.allSettled(symbols.map((s) => (local.supports(s) ? local.quote(s) : snapshot(s))));
     return results.map((r, i) => (r.status === "fulfilled" ? r.value : { symbol: symbols[i], error: true }));
   }
   if (p === "/api/search") {
     const q = (url.searchParams.get("q") || "").slice(0, 60);
     if (!q.trim()) return [];
-    const json = await cached(`s:${q}`, 300_000, async () => {
-      const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=20&newsCount=0&listsCount=0`, { headers: { "User-Agent": "Mozilla/5.0" } });
-      return res.json();
-    });
-    return (json.quotes || [])
+    const mine = localSymbols().filter((s) => s.includes(q.trim().toUpperCase()))
+      .map((s) => ({ symbol: s, name: `${s} (local files)`, exchange: "Local files", type: "Local", market: marketOf(s) }));
+    let json = {};
+    try {
+      json = await cached(`s:${q}`, 300_000, async () => {
+        const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=20&newsCount=0&listsCount=0`, { headers: { "User-Agent": "Mozilla/5.0" } });
+        return res.json();
+      });
+    } catch (err) { if (!mine.length) throw err; }
+    return mine.concat((json.quotes || [])
       .filter((x) => x.symbol && ["EQUITY", "ETF", "INDEX", "CRYPTOCURRENCY", "CURRENCY", "FUTURE", "MUTUALFUND"].includes(x.quoteType))
-      .map((x) => ({ symbol: x.symbol, name: x.longname || x.shortname || x.symbol, exchange: x.exchDisp, type: x.typeDisp || x.quoteType, market: marketOf(x.symbol) }));
+      .map((x) => ({ symbol: x.symbol, name: x.longname || x.shortname || x.symbol, exchange: x.exchDisp, type: x.typeDisp || x.quoteType, market: marketOf(x.symbol) })));
   }
   if (p === "/api/screener/meta") return { markets: Object.fromEntries(Object.entries(SCREENER_MARKETS).map(([k, m]) => [k, { label: m.label, exchanges: m.exchanges, universes: m.universes || null, currency: m.currency, source: m.source || "Yahoo screener" }])), sectors: SECTORS };
   if (p === "/api/screener" && req.method === "POST") return runScreen(await readBody(req));
@@ -209,7 +246,7 @@ async function handleApi(req, url) {
     if (pm[2] && req.method === "POST") {
       if (!isConfigured(prov.id)) throw new ProviderError("Save the key first", 400);
       const started = Date.now();
-      const candles = await prov.candles(prov.testSymbol, "1d", config.providers[prov.id]);
+      const candles = await prov.candles(prov.testSymbol, "1d", providerConfig(prov.id));
       return { ok: true, symbol: prov.testSymbol, candles: candles.length, ms: Date.now() - started };
     }
     if (req.method === "POST") {
