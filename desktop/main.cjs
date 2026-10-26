@@ -5,6 +5,9 @@ const { app, BrowserWindow, Menu, shell } = require("electron");
 const path = require("path");
 const net = require("net");
 const { pathToFileURL } = require("url");
+const { setupUpdates } = require("./updater.cjs");
+
+setupUpdates({ repo: "Mehal45/LinkCharts", assets: { win32: /^LinkCharts-Setup-.*\.exe$/i } });
 
 const root = path.join(__dirname, "..");
 let win = null;
@@ -41,7 +44,7 @@ function createWindow() {
     width: 1440, height: 900, minWidth: 900, minHeight: 560,
     title: "LinkCharts", backgroundColor: "#131722", autoHideMenuBar: true, show: false,
     icon: path.join(root, "build", "icon.png"),
-    webPreferences: { contextIsolation: true, sandbox: true },
+    webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, "preload.cjs") },
   });
   win.once("ready-to-show", () => win.show());
   win.webContents.on("before-input-event", (e, input) => {

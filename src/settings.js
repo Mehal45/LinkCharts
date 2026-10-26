@@ -1,8 +1,10 @@
 // "Data sources & API keys" dialog: one card per provider, plus per-market source routing.
 import { api, esc, modal, toast, bus, askConfirm } from "./util.js";
+import { mountUpdatesSection } from "./updates.js";
 
 export async function openSettings() {
-  const m = modal("Data sources & API keys", `<div id="st-body" class="muted">Loading…</div>`, { wide: true });
+  const m = modal("Data sources & API keys", `<div id="st-body" class="muted">Loading…</div><div id="st-updates" class="st-updates"></div>`, { wide: true });
+  mountUpdatesSection(m.el.querySelector("#st-updates"));
   const body = m.el.querySelector("#st-body");
 
   const render = (data) => {

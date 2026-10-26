@@ -19,7 +19,9 @@ No account or API key is needed to start. It uses free data out of the box, and 
 2. Open it. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway** (the installer isn't code-signed yet).
 3. Click **Next** through the installer. LinkCharts opens in its own window, with shortcuts on the desktop and in the Start menu.
 
-No Node.js, browser or black window needed. Updates: download and run the newer installer; your data stays.
+No Node.js, browser or black window needed.
+
+**Updates:** LinkCharts 1.2 and newer update themselves. When a new version is out a bar appears: click **Update now**, then **Restart & update**. It installs the new version and opens again, and your data stays. Check by hand (or turn the automatic check off) in **⚙ › App updates**. Coming from 1.1? Install 1.2 once from the release page.
 
 ### Mac, Linux, or running from the source
 
@@ -221,6 +223,7 @@ Everything you set up is saved automatically to **`data/userdata.json`** on your
 |---|---|
 | `Start LinkCharts.bat` · `Start LinkCharts.command` | Double-click launchers for Windows and Mac |
 | `desktop/main.cjs` | Windows app: runs the server inside the app and shows it in its own window (`npm run app` to try it, `npm run dist:win` to build the installer) |
+| `desktop/updater.cjs`, `desktop/preload.cjs`, `src/updates.js` | In-app updates from GitHub Releases |
 | `server.mjs` | API, caching, key storage (`data/config.json`), saved user data (`data/userdata.json`), per-market source routing |
 | `src/boot.js` | Startup: loads saved data from disk before the app starts |
 | `providers.mjs` | Provider registry, Yahoo, Binance, Fyers, Twelve Data, Polygon |

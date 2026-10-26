@@ -314,6 +314,19 @@
     .toast { background: var(--panel3); border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.5); transition: opacity .4s, transform .4s; }
     .toast.ok { border-color: rgba(34,171,148,.6); } .toast.error { border-color: rgba(242,54,69,.6); } .toast.alert { border-color: var(--warn); }
     .toast.out { opacity: 0; transform: translateY(8px); }
+    .update-bar { position: fixed; top: 52px; right: 16px; z-index: 900; max-width: min(620px, calc(100vw - 32px)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      padding: 10px 12px; background: var(--panel3); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.5); font-size: 13px; }
+    .update-bar[hidden] { display: none; }
+    .update-bar .spacer { flex: 1; }
+    .update-bar .upd-notes { flex-basis: 100%; }
+    .linkish { background: none; border: 0; color: var(--accent2); padding: 0 4px; cursor: pointer; }
+    .upd-progress { width: 140px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+    .upd-progress i { display: block; height: 100%; background: var(--accent); }
+    .upd-notes { white-space: pre-wrap; font: inherit; font-size: 12px; line-height: 1.5; max-height: 220px; overflow: auto; margin: 6px 0; padding: 8px 10px; background: var(--panel); border-radius: 6px; }
+    .upd-notes[hidden] { display: none; }
+    .st-updates { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 4px; }
+    .upd-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0; }
+    .upd-box { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
   </style>
 </head>
 <body>

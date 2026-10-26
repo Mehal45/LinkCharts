@@ -12,6 +12,7 @@ import { Details } from "./details.js";
 import { Screener } from "./screener.js";
 import { applyTheme, currentTheme, openThemePicker } from "./themes.js";
 import { openSettings } from "./settings.js";
+import { startUpdates } from "./updates.js";
 
 const INTERVALS = [["1m", "1m"], ["5m", "5m"], ["15m", "15m"], ["30m", "30m"], ["60m", "1H"], ["1d", "1D"], ["1wk", "1W"], ["1mo", "1M"]];
 const ivLabel = (iv) => INTERVALS.find(([k]) => k === iv)?.[1] || iv;
@@ -421,6 +422,7 @@ $("replayBtn").onclick = () => { const r = active().replay; r.state === "off" ? 
 $("alertBtn").onclick = () => alerts.openDialog();
 $("tradeBtn").onclick = () => trading.openTicket(active().symbol, "buy");
 $("settingsBtn").onclick = () => openSettings();
+startUpdates();
 $("screenerBtn").onclick = () => (screener.el.hidden ? screener.open() : screener.close());
 $("themeBtn").onclick = () => openThemePicker();
 $("indBtn").onclick = () => openIndicatorPicker();
