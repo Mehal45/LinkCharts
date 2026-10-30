@@ -96,7 +96,7 @@ The server only listens on your own computer (127.0.0.1), because it can store y
 | Source | You enter | Notes |
 |---|---|---|
 | Fyers API v3 | App ID + access token | Token expires daily |
-| Zerodha Kite Connect | API key + access token | Needs the historical-data add-on; token expires daily |
+| Zerodha Kite Connect | API key + API secret, then **Log in with Zerodha** | Needs the historical-data add-on. In your Kite app set the Redirect URL to `http://127.0.0.1:5174/api/kite/callback`. Log in once a day (Zerodha ends logins at 6 AM) |
 
 ### Global data APIs (your key)
 
@@ -239,7 +239,7 @@ Everything you set up is saved automatically to **`data/userdata.json`** on your
 ## Disclaimer & limits
 
 - **Free data:** Yahoo is unofficial and may be delayed, so it's for personal use only; don't publish its data.
-- **Broker tokens:** Fyers and Kite access tokens expire daily, so generate a new one each day.
+- **Broker logins:** Zerodha and Fyers end every login daily. For Zerodha click **Log in with Zerodha** in ⚙ each day; for Fyers paste a fresh access token.
 - **Paper trading isn't realistic execution:** no fees, slippage or margin. Your data (watchlists, alerts, drawings, trades) is stored in this browser.
 - **Not investment advice.** This is an educational tool. Market data may be delayed or wrong, and nothing here is a recommendation to buy or sell.
 

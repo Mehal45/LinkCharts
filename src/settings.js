@@ -12,7 +12,8 @@ export async function openSettings() {
     const optionalOnly = (p) => p.fields.length && p.fields.every((f) => f.optional);
     const status = (p) => p.builtIn ? `<span class="pill ok">Always on</span>`
       : optionalOnly(p) ? `<span class="pill ok">Ready · key optional</span>`
-      : p.configured ? `<span class="pill ok">Connected</span>` : `<span class="pill">Not set</span>`;
+      : p.configured ? `<span class="pill ok">Connected</span>`
+      : p.login?.keysSaved ? `<span class="pill warn">Log in needed</span>` : `<span class="pill">Not set</span>`;
     const card = (p) => p.builtIn
       ? `<div class="prov on"><div class="prov-head"><b>${esc(p.name)}</b>${status(p)}${p.live ? `<span class="pill live">Live</span>` : ""}</div>
           <div class="muted small">${esc(p.note)}</div><div class="small">Markets: ${markets(p)}</div></div>`
@@ -22,8 +23,14 @@ export async function openSettings() {
           <div class="small">Markets: ${markets(p)}</div>
           ${p.fields.map((f) => `<label class="field"><span>${esc(f.label)}</span>
             <input name="${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : ""} placeholder="${esc(f.placeholder || "")}" value="${esc(f.value)}" /></label>`).join("")}
+          ${p.login ? `<div class="login-box small">
+            ${p.login.keysSaved ? `<button type="button" data-act="login" class="${p.configured ? "" : "primary"}">${esc(p.login.label)}</button>
+              <span class="muted">${p.configured ? `Logged in${p.login.user ? ` as ${esc(p.login.user)}` : ""} for today.` : "Needed once a day (Zerodha ends logins at 6 AM)."}</span>` : `<span class="muted">Save the API key and secret, then log in.</span>`}
+            <div class="muted">In your Kite app's settings, the <b>Redirect URL</b> must be <code class="copyable" title="Click to copy">${esc(p.login.redirect)}</code></div>
+          </div>` : ""}
           <div class="row-end"><span class="test-result small"></span>
-            ${p.configured ? `${optionalOnly(p) ? "" : `<button type="button" data-act="remove" class="danger">Remove</button>`}<button type="button" data-act="test">Test</button>` : ""}
+            ${p.configured || p.login?.keysSaved ? `${optionalOnly(p) ? "" : `<button type="button" data-act="remove" class="danger">Remove</button>`}` : ""}
+            ${p.configured ? `<button type="button" data-act="test">Test</button>` : ""}
             <button type="submit" class="primary">Save</button></div>
         </form>`;
     const isBroker = (p) => !p.builtIn && !optionalOnly(p) && p.markets.length === 1 && p.markets[0] === "india";
@@ -64,6 +71,30 @@ export async function openSettings() {
       };
       form.onclick = async (e) => {
         const act = e.target.dataset.act;
+        if (e.target.classList.contains("copyable")) {
+          navigator.clipboard?.writeText(e.target.textContent).then(() => toast("Copied", "ok"), () => {});
+        }
+        if (act === "login") {
+          // Zerodha's login opens in your browser; after it, Zerodha sends the browser back to LinkCharts,
+          // which saves today's token. Meanwhile this dialog watches for it.
+          try {
+            const { url } = await api(`/api/providers/${id}/login`, {});
+            window.open(url, "_blank");
+            result.textContent = "Log in in your browser — this updates by itself when you're done.";
+            result.className = "test-result small muted";
+            const started = Date.now();
+            const poll = setInterval(async () => {
+              if (!body.isConnected || Date.now() - started > 5 * 60e3) return clearInterval(poll);
+              const data = await api("/api/providers").catch(() => null);
+              if (data?.providers.find((x) => x.id === id)?.configured) {
+                clearInterval(poll);
+                render(data);
+                toast("Connected to Zerodha", "ok");
+                bus.emit("sources-changed");
+              }
+            }, 2500);
+          } catch (err) { result.textContent = err.message; result.className = "test-result small down"; }
+        }
         if (act === "test") {
           result.textContent = "Testing…"; result.className = "test-result small muted";
           try {

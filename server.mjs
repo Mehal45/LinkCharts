@@ -51,7 +51,7 @@ const isConfigured = (id) => {
   const p = PROVIDERS[id];
   if (p.builtIn) return true;
   const c = config.providers[id];
-  return p.fields.every((f) => f.optional || c?.[f.key]);
+  return p.fields.every((f) => f.optional || c?.[f.key]) && (!p.ready || p.ready(c));
 };
 const mask = (v) => (v ? `••••${String(v).slice(-4)}` : "");
 
@@ -146,6 +146,14 @@ function providersView() {
     providers: Object.values(PROVIDERS).map((p) => ({
       id: p.id, name: p.name, builtIn: !!p.builtIn, markets: p.markets, note: p.note, live: !!p.live,
       configured: isConfigured(p.id),
+      // Brokers you log in to (Zerodha): keys saved but today's login still needed.
+      ...(p.login ? {
+        login: {
+          label: p.login.label, needed: !isConfigured(p.id), user: config.providers[p.id]?.user || "",
+          keysSaved: p.fields.every((f) => f.optional || config.providers[p.id]?.[f.key]),
+          redirect: `http://127.0.0.1:${port}/api/${p.id}/callback`,
+        },
+      } : {}),
       fields: (p.fields || []).map((f) => ({ ...f, value: f.secret ? mask(config.providers[p.id]?.[f.key]) : config.providers[p.id]?.[f.key] || "" })),
     })),
   };
@@ -205,6 +213,13 @@ async function handleApi(req, url) {
     cache.clear();
     return providersView();
   }
+  // Broker login (Zerodha): the page opens the broker's login page; the broker sends the browser back here.
+  const lm = /^\/api\/providers\/([a-z]+)\/login$/.exec(p);
+  if (lm && PROVIDERS[lm[1]]?.login) {
+    const prov = PROVIDERS[lm[1]], c = config.providers[prov.id];
+    if (!prov.fields.every((f) => f.optional || c?.[f.key])) throw new ProviderError("Save the API key and secret first", 400);
+    return { url: prov.login.url(c) };
+  }
   const pm = /^\/api\/providers\/([a-z]+)(\/test)?$/.exec(p);
   if (pm && PROVIDERS[pm[1]] && !PROVIDERS[pm[1]].builtIn) {
     const prov = PROVIDERS[pm[1]];
@@ -220,6 +235,10 @@ async function handleApi(req, url) {
       for (const f of prov.fields) {
         const v = typeof body[f.key] === "string" ? body[f.key].trim() : "";
         if (v && !v.startsWith("••••")) next[f.key] = v; // masked value = unchanged
+      }
+      // New keys mean a new login.
+      if (prov.login && (next.apiKey !== config.providers[prov.id]?.apiKey || next.apiSecret !== config.providers[prov.id]?.apiSecret)) {
+        delete next.accessToken; delete next.tokenAt; delete next.user;
       }
       config.providers[prov.id] = next;
       saveConfig(config);
@@ -237,8 +256,29 @@ async function handleApi(req, url) {
   throw new ProviderError("Not found", 404);
 }
 
+/** Where the broker sends you after logging in: saves today's token and says so in the browser tab. */
+async function brokerCallback(prov, url, res) {
+  const page = (title, msg) => res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<!doctype html><meta charset="utf-8"><title>LinkCharts</title>
+<body style="font:16px system-ui;background:#0f1115;color:#e6e8eb;display:grid;place-items:center;height:90vh;margin:0"><div style="text-align:center">
+<h2>${title}</h2><p style="color:#8a919c">${msg}</p></div></body>`);
+  const esc = (s) => String(s).replace(/[<>&"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  const token = url.searchParams.get("request_token");
+  if (url.searchParams.get("status") !== "success" || !token) return page("Login cancelled", "Go back to LinkCharts and click Log in again.");
+  try {
+    const c = config.providers[prov.id] || {};
+    config.providers[prov.id] = { ...c, ...(await prov.session(c, token)) };
+    saveConfig(config);
+    cache.clear();
+    page(`✓ Connected to ${esc(prov.name.split(" ")[0])}`, `${config.providers[prov.id].user ? `Logged in as ${esc(config.providers[prov.id].user)}. ` : ""}You can close this tab and go back to LinkCharts.`);
+  } catch (e) {
+    page("Couldn't log in", `${esc(e.message)}<br>Check the API secret in LinkCharts (⚙), then log in again.`);
+  }
+}
+
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
+  const cb = /^\/api\/([a-z]+)\/callback$/.exec(url.pathname);
+  if (cb && PROVIDERS[cb[1]]?.login) return brokerCallback(PROVIDERS[cb[1]], url, res);
   if (url.pathname.startsWith("/api/")) {
     try {
       const data = await handleApi(req, url);

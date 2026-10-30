@@ -229,13 +229,36 @@ async function kiteToken(symbol) {
 }
 const KITE_IV = { "1m": "minute", "5m": "5minute", "15m": "15minute", "30m": "30minute", "60m": "60minute", "1d": "day", "1wk": "day", "1mo": "day" };
 const KITE_SPAN = { "1m": 30, "5m": 90, "15m": 180, "30m": 180, "60m": 365, "1d": 1800, "1wk": 1800, "1mo": 1800 };
+/** Kite's access tokens stop working at 6 AM India time every day. */
+function lastKiteReset() {
+  const ist = Date.now() + 19800e3;
+  let reset = Math.floor(ist / 864e5) * 864e5 + 6 * 3600e3;
+  if (reset > ist) reset -= 864e5;
+  return reset - 19800e3;
+}
 export const kite = {
   id: "kite", name: "Zerodha Kite Connect", markets: ["india"], live: false,
-  note: "Needs a Kite Connect app (kite.trade) with the historical data add-on. The access token expires every morning — paste a fresh one daily.",
+  note: "Needs a Kite Connect app (developers.kite.trade) with the historical data add-on. Save its API key and secret, then click Log in with Zerodha — once a day, because Zerodha ends every login at 6 AM.",
   fields: [
     { key: "apiKey", label: "API key", placeholder: "Your Kite app's api_key" },
-    { key: "accessToken", label: "Access token", placeholder: "From the Kite login flow", secret: true },
+    { key: "apiSecret", label: "API secret", placeholder: "Your Kite app's api_secret", secret: true },
   ],
+  // The access token comes from logging in (see /api/kite/callback in server.mjs), not from a field.
+  login: { label: "Log in with Zerodha", url: (cfg) => `https://kite.zerodha.com/connect/login?v=3&api_key=${encodeURIComponent(cfg.apiKey)}` },
+  ready: (cfg) => !!cfg?.accessToken && (cfg.tokenAt || 0) > lastKiteReset(),
+  /** Swaps the one-time request_token from the login for today's access token. */
+  async session(cfg, requestToken) {
+    const { createHash } = await import("node:crypto");
+    const checksum = createHash("sha256").update(cfg.apiKey + requestToken + cfg.apiSecret).digest("hex");
+    const r = await fetch("https://api.kite.trade/session/token", {
+      method: "POST",
+      headers: { "X-Kite-Version": "3", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ api_key: cfg.apiKey, request_token: requestToken, checksum }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || !body.data?.access_token) throw new ProviderError(body.message || `Zerodha answered ${r.status}`, 400);
+    return { accessToken: body.data.access_token, tokenAt: Date.now(), user: body.data.user_name || body.data.user_id || "" };
+  },
   testSymbol: "RELIANCE.NS",
   supports: (symbol) => !!INDIA_INDEX[symbol] || parse(symbol).kind === "india",
   async candles(symbol, interval, cfg) {
@@ -243,6 +266,7 @@ export const kite = {
     if (!token) throw new ProviderError("Symbol not in Kite's instrument list", 404);
     const fmt = (u) => new Date((u + 19800) * 1000).toISOString().slice(0, 19).replace("T", "+");
     const to = now(), from = to - KITE_SPAN[interval] * DAY;
+    if (!kite.ready(cfg)) throw new ProviderError("Zerodha login has expired — click Log in with Zerodha (⚙)", 401);
     const body = await getJson(`https://api.kite.trade/instruments/historical/${token}/${KITE_IV[interval]}?from=${fmt(from)}&to=${fmt(to)}`, {
       headers: { "X-Kite-Version": "3", Authorization: `token ${cfg.apiKey}:${cfg.accessToken}` },
     });

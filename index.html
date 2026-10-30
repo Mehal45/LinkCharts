@@ -314,6 +314,9 @@
     .toast { background: var(--panel3); border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.5); transition: opacity .4s, transform .4s; }
     .toast.ok { border-color: rgba(34,171,148,.6); } .toast.error { border-color: rgba(242,54,69,.6); } .toast.alert { border-color: var(--warn); }
     .toast.out { opacity: 0; transform: translateY(8px); }
+    .login-box { display: grid; gap: 6px; margin: 8px 0 2px; } .login-box button { justify-self: start; }
+    .login-box code.copyable { cursor: copy; background: var(--panel); padding: 1px 5px; border-radius: 4px; user-select: all; }
+    .pill.warn { color: var(--warn); border-color: rgba(247,201,72,.5); }
     .update-bar { position: fixed; top: 52px; right: 16px; z-index: 900; max-width: min(620px, calc(100vw - 32px)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
       padding: 10px 12px; background: var(--panel3); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.5); font-size: 13px; }
     .update-bar[hidden] { display: none; }
