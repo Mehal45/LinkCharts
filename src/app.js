@@ -67,6 +67,8 @@ function persist() {
   store.set("sidebar", state.sidebar);
 }
 
+// Studio became the default look in 1.3.0: switch everyone to it once (the 🎨 picker still has the old themes).
+if (!store.get("studio-intro", false)) { store.set("studio-intro", true); store.set("theme", "studio"); }
 // Restore the saved theme before any chart is drawn.
 applyTheme(currentTheme().id);
 

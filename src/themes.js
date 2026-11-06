@@ -12,7 +12,13 @@ const base = {
 /** chart: bg, text, grid, up, down, line (line/area series), crosshair. grid: false hides gridlines. */
 export const THEMES = [
   {
-    id: "midnight", name: "Midnight", group: "Classic", isDefault: true,
+    id: "studio", name: "Studio", group: "Classic", bodyClass: "theme-studio", isDefault: true, light: true,
+    tagline: "Airy white cards, rounded pills and a soft green — a calm, modern fintech dashboard.",
+    vars: { ...base, "--bg": "#f7f7f8", "--panel": "#ffffff", "--panel2": "#f3f3f5", "--panel3": "#eaeaed", "--line": "#ececef", "--text": "#17171a", "--muted": "#9b9ca3", "--up": "#3dba7e", "--down": "#f2445c", "--accent": "#17171a", "--accent2": "#2fa56c", "--warn": "#e0a020", "--font": "Outfit, Inter, system-ui, sans-serif", "--radius": "12px", "--menu-bg": "#ffffff" },
+    chart: { bg: "#f7f7f8", text: "#8e9098", grid: "#eeeef0", up: "#3dba7e", down: "#f2445c", line: "#8b3dff", crosshair: "#2a2a2e" },
+  },
+  {
+    id: "midnight", name: "Midnight", group: "Classic",
     tagline: "The classic dark trading desk. Easy on the eyes for long sessions.",
     vars: base,
     chart: { bg: "#0f1115", text: "#9aa1ac", grid: "#1a1f26", up: "#22ab94", down: "#f23645", line: "#2962ff", crosshair: "#758696" },
@@ -82,7 +88,7 @@ export const THEMES = [
 ];
 
 const byId = (id) => THEMES.find((t) => t.id === id) || THEMES[0];
-export const currentTheme = () => byId(store.get("theme", "midnight"));
+export const currentTheme = () => byId(store.get("theme", "studio"));
 
 /** Applies a theme to the page; listeners (chart, trading lines) receive "theme" with the palette. */
 export function applyTheme(id) {
@@ -94,7 +100,7 @@ export function applyTheme(id) {
   document.body.classList.remove(...THEMES.map((x) => x.bodyClass).filter(Boolean));
   if (t.bodyClass) document.body.classList.add(t.bodyClass);
   root.dataset.theme = t.id;
-  root.style.colorScheme = ["daylight", "aesthetic", "paper"].includes(t.id) ? "light" : "dark";
+  root.style.colorScheme = t.light || ["daylight", "aesthetic", "paper"].includes(t.id) ? "light" : "dark";
   store.set("theme", t.id);
   bus.emit("theme", t);
   return t;
@@ -118,7 +124,7 @@ function thumbnail(t) {
   }).join("");
   const grid = c.grid ? [20, 35, 50].map((y) => `<line x1="0" x2="120" y1="${y}" y2="${y}" stroke="${c.grid}" stroke-width="0.6"/>`).join("") : "";
   const glass = t.id === "glass";
-  const outerBg = glass ? "linear-gradient(135deg,#1b1f4b,#3a1c5c 45%,#0f4c5c)" : t.id === "aesthetic" ? "linear-gradient(135deg,#fde7f3,#ece4ff 50%,#ffe9d6)" : v["--bg"];
+  const outerBg = glass ? "linear-gradient(135deg,#1b1f4b,#3a1c5c 45%,#0f4c5c)" : t.id === "aesthetic" ? "linear-gradient(135deg,#fde7f3,#ece4ff 50%,#ffe9d6)" : t.id === "studio" ? "#e7e7ea" : v["--bg"];
   const panel = v["--panel"], line = v["--line"];
   return `<div class="th-thumb" style="background:${outerBg};font-family:${esc(v["--font"])}">
     <div class="th-head" style="background:${panel};border-bottom:1px solid ${line}"><i style="background:${v["--accent"]}"></i><span style="color:${v["--text"]}">AAPL</span><span style="color:${v["--up"]}">+1.2%</span></div>

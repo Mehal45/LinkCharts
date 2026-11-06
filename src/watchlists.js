@@ -23,6 +23,15 @@ const DEFAULT_LISTS = () => [
   { id: uid(), name: "World indices", items: syms("^FTSE", "^GDAXI", "^FCHI", "^N225", "^HSI", "000001.SS") },
 ];
 
+// Round letter badge in front of each symbol (only the Studio theme shows it).
+const ICON_COLORS = ["#17171a", "#f2445c", "#3b82f6", "#22b8e0", "#8b3dff", "#f59e0b", "#3dba7e"];
+function symIcon(s, open) {
+  const name = short(s).replace(/^[^a-z0-9]+/i, "");
+  let h = 0;
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `<i class="sym-ico ${open ? "open" : ""}" style="background:${ICON_COLORS[h % ICON_COLORS.length]}">${esc(name.charAt(0).toUpperCase())}</i>`;
+}
+
 export class Watchlists {
   constructor({ el, onSelect }) {
     this.el = el;
@@ -136,7 +145,7 @@ export class Watchlists {
       const ch = ok && q.prevClose ? q.price - q.prevClose : 0, chp = ok && q.prevClose ? (ch / q.prevClose) * 100 : 0;
       const d = ok ? precisionFor(q.price, it.s) : 2;
       return `<div class="wl-row ${it.s === this.current ? "sel" : ""}" draggable="true" data-idx="${idx}" data-sym="${esc(it.s)}" title="${esc(q?.name || it.s)}">
-        <span class="sym"><i class="mk ${ok && q.marketOpen ? "open" : ""}"></i>${esc(short(it.s))}</span>
+        <span class="sym"><i class="mk ${ok && q.marketOpen ? "open" : ""}"></i>${symIcon(it.s, ok && q.marketOpen)}${esc(short(it.s))}</span>
         <span>${ok ? fmtPx(q.price, d) : "…"}</span>
         <span class="${cls(ch)}">${ok ? signed(ch, d) : ""}</span>
         <span class="${cls(ch)}">${ok ? signed(chp) + "%" : ""}</span>
